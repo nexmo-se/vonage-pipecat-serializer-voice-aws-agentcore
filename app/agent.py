@@ -30,7 +30,7 @@ class VonagePipecatAgent:
         self._monitor_task: asyncio.Task | None = None
         self._runner = None
         self._pipeline_task = None
-        self.session_id: str = os.getenv("VONAGE_SESSION_ID", "")
+        self.session_id: str = os.getenv("VONAGE_CALL_ID", os.getenv("VONAGE_SESSION_ID", ""))
         self.connected: bool = False
         self.last_error: str | None = None
         self.on_event = on_event
@@ -60,7 +60,7 @@ class VonagePipecatAgent:
             logger.warning("Agent already running")
             return
         if not self.session_id:
-            raise ValueError("session_id is required")
+            raise ValueError("call_id is required")
         self.last_error = None
         self._task = asyncio.create_task(self._run_pipeline())
 
@@ -154,7 +154,7 @@ class VonagePipecatAgent:
         if not application_id:
             missing.append("VONAGE_APPLICATION_ID")
         if not self.session_id:
-            missing.append("VONAGE_SESSION_ID")
+            missing.append("VONAGE_CALL_ID")
         if missing:
             self.last_error = f"missing env vars: {', '.join(missing)}"
             logger.error("Invalid environment", missing=missing)

@@ -3,7 +3,7 @@
 Two-stage test that validates the AWS and Vonage layers separately before combining them with Nova Sonic in C4b:
 
 **Stage 1:** Verify AWS Bedrock credentials and Nova Lite text model access (pure credential check, no transport)  
-**Stage 2:** Verify Vonage transport session connectivity in the Bedrock-configured Docker environment (pure audio echo, no LLM invocation)
+**Stage 2:** Verify Vonage transport call connectivity in the Bedrock-configured Docker environment (pure audio echo, no LLM invocation)
 
 This paves the way for C4b by proving both layers independently: Bedrock credentials work (Stage 1) and the Vonage transport joins and routes audio correctly (Stage 2).
 
@@ -15,7 +15,7 @@ This paves the way for C4b by proving both layers independently: Bedrock credent
 
 - Python 3.11+ and [uv](https://docs.astral.sh/uv/)
 - AWS account with IAM credentials and Bedrock model access
-- Vonage Video API credentials (from C1) with active session ID
+- Vonage Video API credentials (from C1) with active call ID
 - **Model Access Required:**
   - `amazon.nova-lite-v1:0` (for credential test in Stage 1)
   - Enable model access in [Bedrock console](https://console.aws.amazon.com/bedrock/home#/modelaccess) — us-east-1 recommended
@@ -27,7 +27,7 @@ This paves the way for C4b by proving both layers independently: Bedrock credent
 ### macOS (Docker)
 
 ```bash
-cd tests/c4a_aws_bedrock
+cd tests/c4a_bedrock_preflight
 
 # Build Dockerfile (includes git for Pipecat source install, Python 3.13, boto3, Vonage SDK)
 docker build -t c4a-bedrock .
@@ -39,7 +39,7 @@ docker build -t c4a-bedrock .
 ### Native Linux
 
 ```bash
-cd tests/c4a_aws_bedrock
+cd tests/c4a_bedrock_preflight
 
 python -m venv .venv
 source .venv/bin/activate
@@ -94,7 +94,7 @@ Test C4a PASSED ✓
 
 ## Stage 2: Transport Echo (Vonage Session Connectivity)
 
-Runs a Pipecat pipeline in the Bedrock-configured Docker environment to validate Vonage session join, participant lifecycle, and audio round-trip.
+Runs a Pipecat pipeline in the Bedrock-configured Docker environment to validate Vonage call join, participant lifecycle, and audio round-trip.
 
 **Pipeline:** `transport.input() → transport.output()` — audio is echoed directly back with no LLM processing. This is the same transport pattern as C3, but running inside the c4a Docker image that will be extended with Nova Sonic in C4b.
 
@@ -104,7 +104,7 @@ Runs a Pipecat pipeline in the Bedrock-configured Docker environment to validate
 | ---------------------------------- | ------------------------------------------------------------------------- |
 | `test_bedrock.py`                  | Stage 1: AWS credential & model access verification                       |
 | `bedrock_transport_integration.py` | Bedrock client wrapper + LLM invocation helper classes                    |
-| `bedrock_echo_agent.py`            | Stage 2: Vonage transport echo (session join + audio round-trip, no LLM)  |
+| `bedrock_echo_agent.py`            | Stage 2: Vonage transport echo (call join + audio round-trip, no LLM)  |
 | `Dockerfile`                       | Linux runtime: Python 3.13, git, system dependencies for Pipecat SDK      |
 | `requirements.txt`                 | Dependencies: boto3, Pipecat, Vonage Video SDK, python-dotenv, websockets |
 
@@ -116,7 +116,7 @@ Set in root `.env`:
 # Vonage Video (from C1)
 VONAGE_APPLICATION_ID=<your-app-id>
 VONAGE_PRIVATE_KEY=private.key
-VONAGE_SESSION_ID=<session-from-c1>
+VONAGE_CALL_ID=<call-from-c1>
 
 # AWS credentials (profile recommended)
 AWS_PROFILE=vonage-dev            # or use AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY
@@ -140,7 +140,7 @@ docker run --rm \
   -v "$(pwd)/../../private.key:/workspace/private.key:ro" \
   c4a-bedrock python bedrock_echo_agent.py
 
-# Native Linux (assumes VONAGE_SESSION_ID is set in root .env)
+# Native Linux (assumes VONAGE_CALL_ID is set in root .env)
 source .venv/bin/activate
 python bedrock_echo_agent.py
 ```
@@ -150,7 +150,7 @@ python bedrock_echo_agent.py
 Use this exact flow for reproducible results:
 
 ```bash
-cd tests/c4a_aws_bedrock
+cd tests/c4a_bedrock_preflight
 
 # 1) Build latest image
 docker build -t c4a-bedrock .
@@ -171,11 +171,11 @@ docker run --rm \
   c4a-bedrock python bedrock_echo_agent.py 2>&1 | tee c4a-bedrock-echo.log
 ```
 
-Then in Vonage Playground:
+Then in Vonage voice test client:
 
 1. Open [https://tokbox.com/developer/tools/playground/](https://tokbox.com/developer/tools/playground/)
 2. Log in to the Vonage account that owns your `VONAGE_APPLICATION_ID`
-3. Join the existing session using `VONAGE_SESSION_ID` from `.env`
+3. Join the existing call using `VONAGE_CALL_ID` from `.env`
 4. Publish mic/audio
 5. Speak — you should hear your own audio echoed back within ~1 second
 6. Press Ctrl+C to stop the agent
@@ -184,8 +184,8 @@ Then in Vonage Playground:
 
 ```text
 Initializing Bedrock LLM (amazon.nova-2-sonic-v1:0) in us-east-1…
-Initialising Vonage Pipecat transport for session 2_MX...…
-✓ Connected to Vonage Video session 2_MX...
+Initialising Vonage Pipecat transport for call 2_MX...…
+✓ Connected to Vonage Video call 2_MX...
 ✓ Bedrock LLM (amazon.nova-2-sonic-v1:0) ready for participant interactions
 
 Pipecat transport echo running — speak into your browser microphone
@@ -202,13 +202,13 @@ Press Ctrl+C to stop.
 Same workflow as C3 — this is a transport echo with no LLM processing:
 
 1. **Start C4a agent** (Docker or native)
-2. **Join [Vonage Playground](https://tokbox.com/developer/tools/playground/)**
+2. **Join [Vonage voice test client](https://tokbox.com/developer/tools/playground/)**
    - Log in to the Vonage account that owns your `VONAGE_APPLICATION_ID`
-   - Use `VONAGE_SESSION_ID` from `.env`
+   - Use `VONAGE_CALL_ID` from `.env`
    - Enable camera + microphone
 3. **Publish audio**
 4. **Speak into microphone** — audio is echoed back directly (no LLM, ~1 s round-trip)
-5. **Unpublish, then disconnect** from Playground
+5. **Unpublish, then disconnect** from voice test client
 6. **Stop agent** (Ctrl+C)
 7. **Verify logs** for success signals (see below)
 
@@ -224,9 +224,9 @@ strings -n 4 c4a-bedrock-echo.log | grep -n -E "Connected to Vonage|Bedrock LLM.
 
 ### Success Checklist
 
-- [ ] Agent connects to Vonage session (logs: "Connected to Vonage Video session")
+- [ ] Agent connects to Vonage call (logs: "Connected to Vonage Video call")
 - [ ] Bedrock LLM initialized (logs: "Bedrock LLM (...) ready for participant interactions")
-- [ ] Participant joins from Playground (logs: "Participant joined with stream")
+- [ ] Participant joins from voice test client (logs: "Participant joined with stream")
 - [ ] Client connects (logs: "Client connected to stream")
 - [ ] Monitor shows active_streams > 0 (logs: "monitor: active_streams=1")
 - [ ] Participant speaks → audio echoed back within ~1 second (no LLM delay)
@@ -256,7 +256,7 @@ strings -n 4 c4a-bedrock-echo.log | grep -n -E "Connected to Vonage|Bedrock LLM.
 | `AccessDeniedException`        | Enable model access in [Bedrock console](https://console.aws.amazon.com/bedrock/home#/modelaccess) |
 | `EndpointResolutionError`      | Check `AWS_REGION` — Bedrock may not be available in all regions                                   |
 | `ModuleNotFoundError: pipecat` | Run: `pip install -r requirements.txt` (Pipecat from Git source)                                   |
-| `Session ID not found`         | Set `VONAGE_SESSION_ID` in root `.env` (from C1)                                                   |
+| `Session ID not found`         | Set `VONAGE_CALL_ID` in root `.env` (from C1)                                                   |
 | `Private key not found`        | Ensure `private.key` exists in repo root with valid Vonage key                                     |
 | Docker build fails (git)       | Dockerfile includes `apt-get install git` for Git-based Pipecat install                            |
 

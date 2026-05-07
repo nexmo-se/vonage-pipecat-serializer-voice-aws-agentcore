@@ -82,19 +82,19 @@ print("\n[Stage 2] Vonage Video Configuration")
 print("-" * 70)
 
 vonage_app_id = os.getenv("VONAGE_APPLICATION_ID", "").strip()
-vonage_session_id = os.getenv("VONAGE_SESSION_ID", "").strip()
+vonage_call_id = os.getenv("VONAGE_CALL_ID", "").strip()
 vonage_private_key = os.getenv("VONAGE_PRIVATE_KEY", "private.key").strip()
 
 if not vonage_app_id:
     print("✗ VONAGE_APPLICATION_ID not set")
     sys.exit(1)
 
-if not vonage_session_id:
-    print("✗ VONAGE_SESSION_ID not set")
+if not vonage_call_id:
+    print("✗ VONAGE_CALL_ID not set")
     sys.exit(1)
 
 print(f"✓ VONAGE_APPLICATION_ID: {vonage_app_id[:20]}...")
-print(f"✓ VONAGE_SESSION_ID: {vonage_session_id[:30]}...")
+print(f"✓ VONAGE_CALL_ID: {vonage_call_id[:30]}...")
 
 private_key_file = Path(vonage_private_key)
 if not private_key_file.is_absolute():
@@ -136,7 +136,7 @@ print("  - Model invocation successful")
 
 print("\n✓ Stage 2 (Vonage Configuration): READY")
 print("  - VONAGE_APPLICATION_ID set")
-print("  - VONAGE_SESSION_ID set")
+print("  - VONAGE_CALL_ID set")
 print("  - Private key file exists")
 
 print("\n⚠ Stage 3 (Pipecat Transport): DEFERRED TO DOCKER")
@@ -150,7 +150,7 @@ print("""
 To run the full C4a Bedrock + Vonage integration test:
 
 1. Build Docker image:
-   cd tests/c4a_aws_bedrock
+   cd tests/c4a_bedrock_preflight
    docker build -t c4a-bedrock .
 
 2. Run Bedrock echo agent in Docker:
@@ -162,9 +162,9 @@ To run the full C4a Bedrock + Vonage integration test:
      -v "$(pwd)/../../private.key:/workspace/private.key:ro" \\
      c4a-bedrock python bedrock_echo_agent.py
 
-3. Join Vonage Playground:
+3. Join Vonage voice test client:
    https://tools.vonage.com/video/playground/
-   (Use session ID from .env)
+   (Use call ID from .env)
 
 4. Publish audio → speak → wait for LLM echo → disconnect
 

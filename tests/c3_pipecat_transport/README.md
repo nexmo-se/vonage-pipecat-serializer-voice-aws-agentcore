@@ -1,10 +1,10 @@
 # C3 — Pipecat Transport Echo Bot
 
-Isolated test that runs a **Pipecat audio echo bot** using the official **Vonage Video Connector Pipecat transport**. Audio received from a browser participant is passed straight back into the session, validating the full Pipecat ↔ Vonage transport layer before adding model logic.
+Isolated test that runs a **Pipecat audio echo bot** using the official **Vonage Voice Linux SDK Pipecat transport**. Audio received from a browser participant is passed straight back into the session, validating the full Pipecat ↔ Vonage transport layer before adding model logic.
 
-**Platform: Linux only** (Vonage Video Connector SDK is a native Linux binary). Use Docker on macOS.
+**Platform: Linux only** (Vonage Voice Linux SDK SDK is a native Linux binary). Use Docker on macOS.
 
-> **Public Beta:** The Vonage Video Connector Pipecat integration is currently in beta. The official documentation is [the Vonage Pipecat transport guide](https://developer.vonage.com/en/video/guides/vonage-video-connector-pipecat-transport), and the published code source is [the Vonage Pipecat repository](https://github.com/Vonage/pipecat).
+> **Public Beta:** The Vonage Voice Linux SDK Pipecat integration is currently in beta. The official documentation is [the Vonage Pipecat transport guide](https://developer.vonage.com/en/video/guides/vonage-video-connector-pipecat-transport), and the published code source is [the Vonage Pipecat repository](https://github.com/Vonage/pipecat).
 
 ## What is Pipecat?
 
@@ -17,7 +17,7 @@ Isolated test that runs a **Pipecat audio echo bot** using the official **Vonage
 
 In this C3 test, Pipecat orchestrates a transport echo loop:
 
-1. Receives audio frames from Vonage Video Connector transport.
+1. Receives audio frames from Vonage Voice Linux SDK transport.
 2. Routes frames through the Pipecat passthrough pipeline.
 3. Sends the same audio frames back to Vonage.
 
@@ -26,7 +26,7 @@ In this C3 test, Pipecat orchestrates a transport echo loop:
 This C3 test validates that:
 
 - Pipecat pipeline is correctly installed and configured.
-- Vonage Video Connector transport can integrate with Pipecat.
+- Vonage Voice Linux SDK transport can integrate with Pipecat.
 - The echo bot can receive audio from the session and play it back in real time.
 - Full round-trip latency (browser → Vonage → Pipecat → Vonage → browser) is acceptable.
 
@@ -37,9 +37,9 @@ When complete, you can speak in a browser participant, hear your audio echoed ba
 ## Prerequisites
 
 - Docker + Docker Compose (macOS) **or** Linux host with Python 3.13+ on Linux AMD64/ARM64
-- Completed test **C1** — `VONAGE_SESSION_ID` must be set in `.env`
+- Completed test **C1** — `VONAGE_CALL_ID` must be set in `.env`
 - `VONAGE_APPLICATION_ID` and `VONAGE_PRIVATE_KEY` set in `.env`
-- Access to Vonage Playground while logged into the Vonage account that owns `VONAGE_APPLICATION_ID`
+- Access to Vonage voice test client while logged into the Vonage account that owns `VONAGE_APPLICATION_ID`
 
 ### SDK versions (latest baseline)
 
@@ -67,11 +67,11 @@ pip install --upgrade -r requirements.txt
 docker compose run --rm --build c3-pipecat-transport
 ```
 
-### End-to-end validation with Vonage Playground
+### End-to-end validation with Vonage voice test client
 
 If you are validating C3 manually from a browser participant, use this flow:
 
-1. Set `VONAGE_SESSION_ID` in the root `.env` file (repo root) to the session you want to test.
+1. Set `VONAGE_CALL_ID` in the root `.env` file (repo root) to the session you want to test.
 2. Start C3 and save logs to a file:
 
 ```bash
@@ -85,12 +85,12 @@ docker compose run --rm --build c3-pipecat-transport | tee logs/c3-pipecat-trans
 1. In a second terminal, confirm your app session id from `.env`:
 
 ```bash
-grep '^VONAGE_SESSION_ID=' .env
+grep '^VONAGE_CALL_ID=' .env
 ```
 
-1. Open Vonage Playground: [https://tokbox.com/developer/tools/playground/](https://tokbox.com/developer/tools/playground/)
+1. Open Vonage voice test client: [https://tokbox.com/developer/tools/playground/](https://tokbox.com/developer/tools/playground/)
 1. Log in to the Vonage account that owns your `VONAGE_APPLICATION_ID`.
-1. Join an existing session using `VONAGE_SESSION_ID` from `.env`.
+1. Join an existing session using `VONAGE_CALL_ID` from `.env`.
 1. Enable camera and microphone permissions in the browser.
 1. Click Publish.
 1. Wait 5-10 seconds while C3 processes media.
@@ -104,7 +104,7 @@ After this sequence, stop C3 with `Ctrl+C` and inspect the saved log file.
 Use the captured log file to confirm the participant lifecycle and monitoring counters:
 
 ```bash
-grep -E 'Connected to Vonage Video session|Client connected to stream|Client disconnected from stream|Participant joined with stream|Participant left stream|monitor: active_streams' logs/c3-pipecat-transport.log
+grep -E 'Connected to Vonage Voice call|Client connected to stream|Client disconnected from stream|Participant joined with stream|Participant left stream|monitor: active_streams' logs/c3-pipecat-transport.log
 ```
 
 Successful runs should show:
@@ -135,7 +135,7 @@ uv run python echo_bot.py
 
 ```text
 Initialising Vonage Pipecat transport for session 2_MX40...
-✓ Connected to Vonage Video session 2_MX40...
+✓ Connected to Vonage Voice call 2_MX40...
 Pipecat pipeline running — speak into your browser microphone
   Audio received → echoed back as audio
 Press Ctrl+C to stop.
@@ -152,7 +152,7 @@ Browser mic → Vonage WebRTC → [Pipecat passthrough pipeline] → Vonage WebR
 Minimal official flow used by this test:
 
 1. Create a Vonage participant token with the Vonage server SDK.
-2. Initialise `VonageVideoConnectorTransport(application_id, session_id, token, params=...)`.
+2. Initialise `VonageVideoConnectorTransport(application_id, call_id, token, params=...)`.
 3. Enable audio in/out with `VonageVideoConnectorTransportParams`.
 4. Build a simple passthrough pipeline: `transport.input() -> transport.output()`.
 5. Register basic lifecycle handlers such as `on_joined`, `on_participant_joined`, and `on_error`.
@@ -240,7 +240,7 @@ Expected debug log checklist:
 - Session lifecycle:
   - `Session connected ...`
   - `ready to publish`
-  - `Connected to Vonage Video session ...`
+  - `Connected to Vonage Voice call ...`
 - Participant lifecycle:
   - `First participant joined with stream ...`
   - `Participant joined with stream ...`
@@ -255,8 +255,8 @@ Expected debug log checklist:
 
 ## Official References
 
-- [Vonage Video Connector Pipecat transport guide](https://developer.vonage.com/en/video/guides/vonage-video-connector-pipecat-transport)
-- [Vonage Video Connector guide](https://developer.vonage.com/en/video/guides/vonage-video-connector)
+- [Vonage Voice Linux SDK Pipecat transport guide](https://developer.vonage.com/en/video/guides/vonage-video-connector-pipecat-transport)
+- [Vonage Voice Linux SDK guide](https://developer.vonage.com/en/video/guides/vonage-video-connector)
 - [Vonage Video Python Server SDK docs](https://developer.vonage.com/en/video/server-sdks/python)
 - [Vonage Pipecat repository](https://github.com/Vonage/pipecat)
 

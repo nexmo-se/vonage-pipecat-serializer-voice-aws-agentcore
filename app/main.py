@@ -43,7 +43,7 @@ _ws_clients: list[WebSocket] = []
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _agent
-    session_id = os.getenv("VONAGE_SESSION_ID", "").strip()
+    session_id = os.getenv("VONAGE_CALL_ID", os.getenv("VONAGE_SESSION_ID", "")).strip()
     if session_id:
         logger.info("Auto-joining session on startup", session_id=session_id)
         _agent = VonagePipecatAgent(on_event=_broadcast)
@@ -91,17 +91,26 @@ async def status() -> dict[str, Any]:
 
 
 @app.post("/join", response_class=JSONResponse)
-async def join(payload: dict[str, Any] | None = Body(default=None), session_id: str | None = None) -> dict[str, str]:
+async def join(
+    payload: dict[str, Any] | None = Body(default=None),
+    session_id: str | None = None,
+    call_id: str | None = None,
+) -> dict[str, str]:
     global _agent
     payload_session = ""
     if payload:
-        payload_session = str(payload.get("session_id", "")).strip()
+        payload_session = str(payload.get("call_id", payload.get("session_id", ""))).strip()
 
-    target_session = (payload_session or session_id or os.getenv("VONAGE_SESSION_ID", "")).strip()
+    target_session = (
+        payload_session
+        or call_id
+        or session_id
+        or os.getenv("VONAGE_CALL_ID", os.getenv("VONAGE_SESSION_ID", ""))
+    ).strip()
     if not target_session:
         return JSONResponse(
             status_code=400,
-            content={"error": "session_id is required (or set VONAGE_SESSION_ID in .env)"},
+            content={"error": "call_id is required (or set VONAGE_CALL_ID in .env)"},
         )
     if _agent and _agent._task and not _agent._task.done():
         return JSONResponse(

@@ -12,9 +12,9 @@ The goal is twofold:
 Run the folders in this order:
 
 1. `c1_vonage_video_session`
-2. `c2_video_connector_sdk`
+2. `c2_voice_linux_sdk`
 3. `c3_pipecat_transport`
-4. `c4a_aws_bedrock`
+4. `c4a_bedrock_preflight`
 5. `c4b_bedrock_nova_sonic`
 6. `c5_agentcore`
 
@@ -26,11 +26,11 @@ C1 is the bootstrap step for the Vonage side. It creates or confirms the session
 
 C1 proves Vonage auth, session creation, and token generation in `tests/c1_vonage_video_session/test_session.py`.
 
-It also gives you the browser playground URL and `VONAGE_SESSION_ID` that later Vonage transport tests depend on.
+It also gives you the browser voice test client URL and `VONAGE_CALL_ID` that later Vonage transport tests depend on.
 
-### C2 — Video Connector SDK join
+### C2 — Voice Linux SDK join
 
-C2 proves the Video Connector join flow in `tests/c2_video_connector_sdk/test_connector.py`.
+C2 proves the Voice Linux SDK join flow in `tests/c2_voice_linux_sdk/test_connector.py`.
 
 This is the first Linux-native step and verifies that the Vonage server-side participant can join the session as a WebRTC client.
 
@@ -38,7 +38,7 @@ This is the first Linux-native step and verifies that the Vonage server-side par
 
 C3 proves the Pipecat transport wiring in `tests/c3_pipecat_transport/echo_bot.py`.
 
-This is the key bridge between the raw Video Connector layer and the full app pipeline. It validates that Pipecat can receive audio from Vonage and send audio back into the same session.
+This is the key bridge between the raw Voice Linux SDK layer and the full app pipeline. It validates that Pipecat can receive audio from Vonage and send audio back into the same session.
 
 ### C4a — Bedrock credentials and low-cost text check
 
@@ -66,7 +66,7 @@ Conceptually, the progression is:
 
 ```text
 C1: Vonage auth + session
-C2: Video Connector joins session
+C2: Voice Linux SDK joins session
 C3: Pipecat transport over Vonage
 C4a: Bedrock credentials + text model
 C4b: Bedrock + Nova Sonic speech pipeline

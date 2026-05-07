@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Test C2: Vonage Video Connector SDK
+Test C2: Vonage Voice Linux SDK
 
-Verifies that the Video Connector SDK can join an existing Vonage Video
-session as a server-side WebRTC participant.
+Verifies that the Voice Linux SDK can join an existing Vonage call
+as a server-side WebRTC participant.
 
 Platform: Linux only (native Linux binary required).
           Run via Docker on macOS — see README.md.
@@ -35,14 +35,14 @@ load_dotenv(REPO_ROOT / ".env")
 def main() -> None:
     application_id = os.getenv("VONAGE_APPLICATION_ID", "").strip()
     private_key_path = os.getenv("VONAGE_PRIVATE_KEY", "private.key").strip()
-    session_id = os.getenv("VONAGE_SESSION_ID", "").strip()
+    call_id = os.getenv("VONAGE_CALL_ID", os.getenv("VONAGE_SESSION_ID", "")).strip()
 
     # ── Validate env vars ─────────────────────────────────────────
     missing: list[str] = []
     if not application_id:
         missing.append("VONAGE_APPLICATION_ID")
-    if not session_id:
-        missing.append("VONAGE_SESSION_ID")
+    if not call_id:
+        missing.append("VONAGE_CALL_ID")
     if missing:
         print(f"ERROR: Missing env vars: {', '.join(missing)}")
         sys.exit(1)
@@ -79,7 +79,7 @@ def main() -> None:
 
     token = client.video.generate_client_token(
         TokenOptions(
-            session_id=session_id,
+            session_id=call_id,
             role="publisher",
         )
     )
@@ -87,8 +87,8 @@ def main() -> None:
         token = token.decode("utf-8")
     print("✓ Generated publisher token")
 
-    # ── Connect via Video Connector SDK ───────────────────────────
-    print(f"Connecting to session {session_id} as WebRTC participant …")
+    # ── Connect via Voice Linux SDK ───────────────────────────────
+    print(f"Connecting to call {call_id} as WebRTC participant …")
     connector = VonageVideoClient()
     connection_state = {"connected": False, "error": None}
 
@@ -114,7 +114,7 @@ def main() -> None:
 
     success = connector.connect(
         application_id=application_id,
-        session_id=session_id,
+        session_id=call_id,
         token=token,
         session_settings=session_settings,
         on_connected_cb=on_connected,
@@ -134,16 +134,16 @@ def main() -> None:
         print(f"ERROR: {connection_state['error']}")
         sys.exit(1)
     if not connection_state["connected"]:
-        print("ERROR: Timed out waiting for session connection")
+        print("ERROR: Timed out waiting for call connection")
         sys.exit(1)
 
-    print("✓ Connected to session as WebRTC participant")
+    print("✓ Connected to call as WebRTC participant")
 
     print("Staying connected for 5 seconds …")
     time.sleep(5)
 
     connector.disconnect()
-    print("✓ Disconnected from session")
+    print("✓ Disconnected from call")
     print("\nTest C2 PASSED ✓")
 
 

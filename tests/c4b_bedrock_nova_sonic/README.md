@@ -3,9 +3,9 @@
 Two-stage test that validates AWS Bedrock integration with the Vonage Video transport (building on C3):
 
 **Stage 1:** Verify AWS Bedrock credentials and Nova Lite text model access (prerequisite for Stage 2)  
-**Stage 2:** Integrate AWS Bedrock LLM with Vonage Pipecat transport for end-to-end session validation
+**Stage 2:** Integrate AWS Bedrock LLM with Vonage Pipecat transport for end-to-end call validation
 
-This paves the way for C5 (AgentCore full-stack runtime) by proving Bedrock API access and Vonage session lifecycle with external AI service.
+This paves the way for C5 (AgentCore full-stack runtime) by proving Bedrock API access and Vonage call lifecycle with external AI service.
 
 **Platform:** Linux only (Bedrock echo agent). Run via Docker on macOS — see setup below.
 
@@ -51,9 +51,9 @@ This C4b test validates that:
 - Real-time latency with a production AI model is acceptable.
 
 **Stage 1** (credential validation) checks that Bedrock API is reachable and Nova Lite model access is enabled.  
-**Stage 2** (echo agent) runs a real conversational agent on Vonage sessions with Bedrock inference.
+**Stage 2** (echo agent) runs a real conversational agent on Vonage calls with Bedrock inference.
 
-When complete, you can ask the agent a question in the Vonage Playground, and it responds naturally with AI-generated speech backed by real Bedrock models.
+When complete, you can ask the agent a question in the Vonage voice test client, and it responds naturally with AI-generated speech backed by real Bedrock models.
 
 ---
 
@@ -61,7 +61,7 @@ When complete, you can ask the agent a question in the Vonage Playground, and it
 
 - Python 3.11+ and [uv](https://docs.astral.sh/uv/)
 - AWS account with IAM credentials and Bedrock model access
-- Vonage Video API credentials (from C1) with active session ID
+- Vonage Video API credentials (from C1) with active call ID
 - **Model Access Required:**
   - `amazon.nova-lite-v1:0` (for credential test in Stage 1)
   - `amazon.nova-2-sonic-v1:0` (for echo agent in Stage 2)
@@ -161,7 +161,7 @@ Set in root `.env`:
 # Vonage Video (from C1)
 VONAGE_APPLICATION_ID=<your-app-id>
 VONAGE_PRIVATE_KEY=private.key
-VONAGE_SESSION_ID=<session-from-c1>
+VONAGE_CALL_ID=<call-from-c1>
 
 # AWS Bedrock
 AWS_PROFILE=vonage-dev            # or use AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY
@@ -189,7 +189,7 @@ docker run --rm \
   -v "$(pwd)/../../private.key:/workspace/private.key:ro" \
   c4b-bedrock-nova-sonic python bedrock_echo_agent.py
 
-# Native Linux (assumes VONAGE_SESSION_ID is set in root .env)
+# Native Linux (assumes VONAGE_CALL_ID is set in root .env)
 source .venv/bin/activate
 python bedrock_echo_agent.py
 ```
@@ -221,11 +221,11 @@ docker run --rm \
   c4b-bedrock-nova-sonic python bedrock_echo_agent.py 2>&1 | tee c4b-bedrock-nova-sonic-echo.log
 ```
 
-Then in Vonage Playground:
+Then in Vonage voice test client:
 
 1. Open [https://tokbox.com/developer/tools/playground/](https://tokbox.com/developer/tools/playground/)
 2. Log in to the Vonage account that owns your `VONAGE_APPLICATION_ID`
-3. Join an existing session using the same session ID from `.env`
+3. Join an existing call using the same call ID from `.env`
 4. Publish mic/audio
 5. Speak for 10-20 seconds
 6. Confirm you hear assistant audio
@@ -235,8 +235,8 @@ Then in Vonage Playground:
 
 ```text
 Initializing Nova Sonic (amazon.nova-2-sonic-v1:0) in us-east-1…
-Initialising Vonage Pipecat transport for session 2_MX...…
-✓ Connected to Vonage Video session 2_MX...
+Initialising Vonage Pipecat transport for call 2_MX...…
+✓ Connected to Vonage Video call 2_MX...
 ✓ Nova Sonic (amazon.nova-2-sonic-v1:0) ready for participant interactions
 
 Pipecat pipeline with Nova Sonic running — speak into your browser microphone
@@ -251,16 +251,16 @@ Press Ctrl+C to stop.
 Same workflow as C3, with LLM processing:
 
 1. **Start C4b agent** (Docker or native)
-2. **Join [Vonage Playground](https://tokbox.com/developer/tools/playground/)**
+2. **Join [Vonage voice test client](https://tokbox.com/developer/tools/playground/)**
 
 - Log in to the Vonage account that owns your `VONAGE_APPLICATION_ID`
-- Use the same session ID from `.env`
+- Use the same call ID from `.env`
 - Enable camera + microphone
 
 1. **Publish video/audio**
 1. **Speak into microphone** (text will be processed through Bedrock LLM)
 1. **Wait 5-10 seconds** for LLM response + echo
-1. **Unpublish, then disconnect** from Playground
+1. **Unpublish, then disconnect** from voice test client
 1. **Stop agent** (Ctrl+C)
 1. **Verify logs** for success signals (see below)
 
@@ -276,9 +276,9 @@ strings -n 4 c4b-bedrock-nova-sonic-echo.log | grep -n -E "Seeding initial Nova 
 
 ### Success Checklist
 
-- [ ] Agent connects to Vonage session (logs: "Connected to Vonage Video session")
+- [ ] Agent connects to Vonage call (logs: "Connected to Vonage Video call")
 - [ ] Nova Sonic initialized (logs: "Nova Sonic (...) ready")
-- [ ] Participant joins from Playground (logs: "Participant joined")
+- [ ] Participant joins from voice test client (logs: "Participant joined")
 - [ ] Client connects (logs: "Client connected")
 - [ ] Monitor shows active_streams > 0 (logs: "monitor: active_streams=1")
 - [ ] Participant speaks → assistant audio returns (audio loop confirmed)
@@ -309,7 +309,7 @@ strings -n 4 c4b-bedrock-nova-sonic-echo.log | grep -n -E "Seeding initial Nova 
 | `AccessDeniedException`        | Enable model access in [Bedrock console](https://console.aws.amazon.com/bedrock/home#/modelaccess) |
 | `EndpointResolutionError`      | Check `AWS_REGION` — Bedrock may not be available in all regions                                   |
 | `ModuleNotFoundError: pipecat` | Run: `pip install -r requirements.txt` (Pipecat from Git source)                                   |
-| `Session ID not found`         | Set `VONAGE_SESSION_ID` in root `.env` (from C1)                                                   |
+| `Session ID not found`         | Set `VONAGE_CALL_ID` in root `.env` (from C1)                                                   |
 | `Private key not found`        | Ensure `private.key` exists in repo root with valid Vonage key                                     |
 | Docker build fails (git)       | Dockerfile includes `apt-get install git` for Git-based Pipecat install                            |
 

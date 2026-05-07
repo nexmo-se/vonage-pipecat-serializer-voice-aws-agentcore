@@ -1,6 +1,6 @@
 # C1 — Vonage Video Session Creation
 
-Isolated test that verifies you can authenticate with the Vonage Video API, create a session, generate a client token, and produce a browser-accessible demo URL.
+Isolated test that verifies you can authenticate with the Vonage Video API, create a call, generate a client token, and produce a browser-accessible demo URL.
 
 **Platform:** Any (macOS, Linux, Windows)
 
@@ -8,23 +8,23 @@ Isolated test that verifies you can authenticate with the Vonage Video API, crea
 
 **Vonage Video API** (formerly OpenTok) is a real-time communications platform that provides:
 
-- **Session management:** Create and manage persistent communication sessions.
+- **Session management:** Create and manage persistent communication calls.
 - **Media routing:** Route audio/video between participants (browsers, servers, apps).
 - **WebRTC infrastructure:** Handle NAT traversal, codecs, and media negotiation.
-- **Client SDKs:** Browser (Web SDK) and server-side (Video Connector) libraries for joining sessions.
+- **Client SDKs:** Browser (Web SDK) and server-side (Voice Linux SDK) libraries for joining calls.
 
-In this project, Vonage Video serves as the **session layer and media intermediary**. Browser users and the AI agent both join the same Vonage session; Vonage routes media between them in real time.
+In this project, Vonage Video serves as the **call layer and media intermediary**. Browser users and the AI agent both join the same Vonage call; Vonage routes media between them in real time.
 
 ## Purpose
 
 This C1 test validates that you can:
 
 - Authenticate to Vonage Video API with your credentials.
-- Create a persistent session for use in C2–C3 tests.
-- Generate a browser-compatible token to join that session manually.
-- See the session accessible in the Vonage Playground.
+- Create a persistent call for use in C2–C3 tests.
+- Generate a browser-compatible token to join that call manually.
+- See the call accessible in the Vonage voice test client.
 
-When complete, you have a real Vonage session ID and understand the browser join flow.
+When complete, you have a real Vonage call ID and understand the browser join flow.
 
 ## C1 Checklist
 
@@ -33,8 +33,8 @@ Run C1 with this quick checklist:
 1. Create `.env` from `.env.example` at repo root.
 2. Set `VONAGE_APPLICATION_ID` and `VONAGE_PRIVATE_KEY`.
 3. Ensure your private key file exists at the configured path.
-4. Run `test_session.py`.
-5. Confirm `VONAGE_SESSION_ID` is saved in root `.env` (C1 writes it automatically when created).
+4. Run `test_call.py`.
+5. Confirm `VONAGE_CALL_ID` is saved in root `.env` (C1 writes it automatically when created).
 6. Open the printed browser playground URL and confirm you can join.
 
 When all six are complete, you are ready for C2.
@@ -48,11 +48,11 @@ Before running C1, you provide these required values in root `.env`:
 
 At runtime, C1 handles the rest:
 
-1. Reads `VONAGE_SESSION_ID` from `.env`.
-2. If the value is missing or a placeholder (for example `your-vonage-session-id`), it creates a new Vonage Video session.
-3. Writes the new `VONAGE_SESSION_ID` back to root `.env` automatically.
-4. Generates a publisher token for that session.
-5. Prints a browser playground URL that includes `apiKey`, `sessionId`, and token.
+1. Reads `VONAGE_CALL_ID` from `.env`.
+2. If the value is missing or a placeholder (for example `your-vonage-call-id`), it creates a new Vonage Voice call.
+3. Writes the new `VONAGE_CALL_ID` back to root `.env` automatically.
+4. Generates a publisher token for that call.
+5. Prints a browser playground URL that includes `apiKey`, `callId`, and token.
 
 Token behavior:
 
@@ -80,7 +80,7 @@ cp .env.example .env
 # Set VONAGE_APPLICATION_ID and VONAGE_PRIVATE_KEY in .env
 
 # Move to this test folder
-cd tests/c1_vonage_video_session
+cd tests/c1_vonage_video_call
 
 # Create virtual environment and install dependencies
 python -m venv .venv
@@ -98,20 +98,20 @@ pip install -r requirements.txt
 cp .env.example .env
 # edit .env and set VONAGE_APPLICATION_ID + VONAGE_PRIVATE_KEY
 
-cd tests/c1_vonage_video_session
+cd tests/c1_vonage_video_call
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
 # run C1
-python3 test_session.py
+python3 test_call.py
 ```
 
 ### Option B (if you are already in this C1 folder)
 
 ```bash
 source .venv/bin/activate
-python3 test_session.py
+python3 test_call.py
 ```
 
 ### Command And Expected Result (quick copy/paste)
@@ -120,33 +120,33 @@ Command to enter:
 
 ```bash
 source .venv/bin/activate
-python3 test_session.py
+python3 test_call.py
 ```
 
 Expected terminal result (shape):
 
 ```text
-Creating new Vonage Video session …
-✓ Created session: 2_MX...
-✓ Saved VONAGE_SESSION_ID to <repo-root>/.env
-  ➜ Added VONAGE_SESSION_ID=2_MX... to your .env file
+Creating new Vonage Voice call …
+✓ Created call: 2_MX...
+✓ Saved VONAGE_CALL_ID to <repo-root>/.env
+  ➜ Added VONAGE_CALL_ID=2_MX... to your .env file
 
 ✓ Generated client token (publisher, 24 h)
 
 ============================================================
 Browser Demo URL:
-https://tokbox.com/developer/tools/playground/?apiKey=...&sessionId=...&token=...
+https://tokbox.com/developer/tools/playground/?apiKey=...&callId=...&token=...
 ============================================================
 
-Open the URL above in a browser to join the video session.
+Open the URL above in a browser to join the video call.
 
 Test C1 PASSED ✓
 ```
 
-If `.env` already has a real `VONAGE_SESSION_ID`, expected output starts with:
+If `.env` already has a real `VONAGE_CALL_ID`, expected output starts with:
 
 ```text
-✓ Using existing session: 2_MX...
+✓ Using existing call: 2_MX...
 ```
 
 ---
@@ -154,16 +154,16 @@ If `.env` already has a real `VONAGE_SESSION_ID`, expected output starts with:
 ## Run
 
 ```bash
-uv run python test_session.py
-# or without uv: source .venv/bin/activate && python3 test_session.py
+uv run python test_call.py
+# or without uv: source .venv/bin/activate && python3 test_call.py
 ```
 
 ### Expected output
 
 ```text
-✓ Created session: 2_MX40...
-✓ Saved VONAGE_SESSION_ID to /.../.env
-  ➜ Added VONAGE_SESSION_ID=2_MX40... to your .env file
+✓ Created call: 2_MX40...
+✓ Saved VONAGE_CALL_ID to /.../.env
+  ➜ Added VONAGE_CALL_ID=2_MX40... to your .env file
 
 ✓ Generated client token
 
@@ -172,44 +172,44 @@ Browser Demo URL:
 https://tokbox.com/developer/tools/playground/?apiKey=...
 ============================================================
 
-Open the URL above in a browser to join the video session.
+Open the URL above in a browser to join the video call.
 
 Test C1 PASSED ✓
 ```
 
-C1 now auto-saves `VONAGE_SESSION_ID` into your root `.env` when it creates a new session. Subsequent tests use this value directly.
+C1 now auto-saves `VONAGE_CALL_ID` into your root `.env` when it creates a new call. Subsequent tests use this value directly.
 
-If `.env` contains a placeholder value such as `your-vonage-session-id`, C1 treats it as missing and creates a real session ID.
+If `.env` contains a placeholder value such as `your-vonage-call-id`, C1 treats it as missing and creates a real call ID.
 
 ## Exit Criteria
 
 C1 is considered complete when all of the following are true:
 
 1. Script ends with `Test C1 PASSED`.
-2. `VONAGE_SESSION_ID` is set in root `.env`.
+2. `VONAGE_CALL_ID` is set in root `.env`.
 3. Browser playground URL opens successfully.
-4. You can join the generated Vonage Video session in the browser.
+4. You can join the generated Vonage Voice call in the browser.
 
 ---
 
 ## What it tests
 
 1. Official Vonage Python SDK authentication using `VONAGE_APPLICATION_ID` + `VONAGE_PRIVATE_KEY`
-2. Video session creation via the Vonage Video REST API
+2. Voice call creation via the Vonage Video REST API
 3. Client token generation with a `publisher` role
-4. Produces a Vonage playground URL so you can verify the session visually in a browser
+4. Produces a Vonage playground URL so you can verify the call visually in a browser
 
 ## Why this folder matters later
 
-Even though C1 is the bootstrap step rather than the most reusable transport test, `test_session.py` now keeps the Vonage setup flow in explicit helper functions for:
+Even though C1 is the bootstrap step rather than the most reusable transport test, `test_call.py` now keeps the Vonage setup flow in explicit helper functions for:
 
 - loading bootstrap config from `.env`
 - creating the Vonage client
-- creating or reusing a session
+- creating or reusing a call
 - generating a publisher token
 - building the browser playground URL
 
-That makes C1 the cleanest place in the repo to lift the initial Vonage session/token setup from when similar browser bootstrap logic is added to the final app.
+That makes C1 the cleanest place in the repo to lift the initial Vonage call/token setup from when similar browser bootstrap logic is added to the final app.
 
 ## Official Vonage References
 
@@ -217,7 +217,7 @@ Use these as source-of-truth references when reviewing or extending C1:
 
 - [Vonage Video Python Server SDK docs](https://developer.vonage.com/en/video/server-sdks/python)
 - [Vonage Python SDK repository](https://github.com/Vonage/vonage-python-sdk)
-- [Vonage Python SDK Video examples (`create_session`, `generate_client_token`)](https://github.com/Vonage/vonage-python-sdk/blob/main/video/README.md)
+- [Vonage Python SDK Video examples (`create_call`, `generate_client_token`)](https://github.com/Vonage/vonage-python-sdk/blob/main/video/README.md)
 - [Vonage Video API overview](https://developer.vonage.com/en/video/overview)
 - [Vonage Video developer playground](https://developer.vonage.com/en/video/developer-tools/playground)
 

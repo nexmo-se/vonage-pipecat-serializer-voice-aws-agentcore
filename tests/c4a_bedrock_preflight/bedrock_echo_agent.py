@@ -73,7 +73,7 @@ async def run_bedrock_echo_agent() -> None:
     # ── Vonage Video configuration ────────────────────────────────
     application_id = os.getenv("VONAGE_APPLICATION_ID", "").strip()
     private_key_path = os.getenv("VONAGE_PRIVATE_KEY", "private.key").strip()
-    session_id = os.getenv("VONAGE_SESSION_ID", "").strip()
+    session_id = os.getenv("VONAGE_CALL_ID", "").strip()
 
     # ── AWS Bedrock configuration ─────────────────────────────────
     bedrock_model_id = os.getenv("BEDROCK_MODEL_ID", "amazon.nova-2-sonic-v1:0").strip()
@@ -85,7 +85,7 @@ async def run_bedrock_echo_agent() -> None:
     if not application_id:
         missing.append("VONAGE_APPLICATION_ID")
     if not session_id:
-        missing.append("VONAGE_SESSION_ID")
+        missing.append("VONAGE_CALL_ID")
     if missing:
         print(f"ERROR: Missing env vars: {', '.join(missing)}")
         sys.exit(1)
