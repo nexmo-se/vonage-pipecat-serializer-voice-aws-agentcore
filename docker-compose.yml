@@ -1,32 +1,32 @@
 services:
   # ─────────────────────────────────────────────────────────────────
-  # C2 — Vonage Video Connector SDK (Linux only)
-  # Run: docker compose run --rm c2-video-connector
+  # C2 — Vonage Voice Linux SDK (Linux only)
+  # Run: docker compose run --rm c2-voice-linux-sdk
   # ─────────────────────────────────────────────────────────────────
-  c2-video-connector:
+  c2-voice-linux-sdk:
     build:
-      context: ./tests/c2_video_connector_sdk
+      context: ./tests/c2_voice_linux_sdk
       dockerfile: Dockerfile
     env_file: .env
     network_mode: host
-    working_dir: /workspace/tests/c2_video_connector_sdk
+    working_dir: /workspace/tests/c2_voice_linux_sdk
     volumes:
       - .:/workspace:ro
     profiles: [c2]
 
   # ─────────────────────────────────────────────────────────────────
-  # C3 — Pipecat Transport echo bot (Linux only)
-  # Run: docker compose run --rm c3-pipecat-transport
+  # C3 — Pipecat Serializer echo bot (Linux only)
+  # Run: docker compose run --rm c3-pipecat-serializer
   # ─────────────────────────────────────────────────────────────────
-  c3-pipecat-transport:
+  c3-pipecat-serializer:
     build:
-      context: ./tests/c3_pipecat_transport
+      context: ./tests/c3_pipecat_serializer
       dockerfile: Dockerfile
     env_file: .env
     network_mode: host
     stdin_open: false
     tty: false
-    working_dir: /workspace/tests/c3_pipecat_transport
+    working_dir: /workspace/tests/c3_pipecat_serializer
     volumes:
       - .:/workspace:ro
     profiles: [c3]

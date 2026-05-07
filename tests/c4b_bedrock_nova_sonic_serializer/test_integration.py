@@ -31,10 +31,10 @@ print("\n[Stage 1] Bedrock Credentials & LLM Test")
 print("-" * 70)
 
 try:
-    from bedrock_transport_integration import BedrockLLMIntegration
+    from bedrock_serializer_integration import BedrockLLMIntegration
     print("✓ Bedrock integration module imported")
 except ImportError as e:
-    print(f"✗ Failed to import bedrock_transport_integration: {e}")
+    print(f"✗ Failed to import bedrock_serializer_integration: {e}")
     sys.exit(1)
 
 aws_profile = os.getenv("AWS_PROFILE", "").strip()
@@ -78,23 +78,23 @@ except Exception as e:
     sys.exit(1)
 
 # ── Stage 2: Vonage Configuration Check ───────────────────────────
-print("\n[Stage 2] Vonage Video Configuration")
+print("\n[Stage 2] Vonage Voice Configuration")
 print("-" * 70)
 
 vonage_app_id = os.getenv("VONAGE_APPLICATION_ID", "").strip()
-vonage_session_id = os.getenv("VONAGE_SESSION_ID", "").strip()
+call_id = os.getenv("VONAGE_CALL_ID", "").strip()
 vonage_private_key = os.getenv("VONAGE_PRIVATE_KEY", "private.key").strip()
 
 if not vonage_app_id:
     print("✗ VONAGE_APPLICATION_ID not set")
     sys.exit(1)
 
-if not vonage_session_id:
-    print("✗ VONAGE_SESSION_ID not set")
+if not call_id:
+    print("✗ VONAGE_CALL_ID not set")
     sys.exit(1)
 
 print(f"✓ VONAGE_APPLICATION_ID: {vonage_app_id[:20]}...")
-print(f"✓ VONAGE_SESSION_ID: {vonage_session_id[:30]}...")
+print(f"✓ VONAGE_CALL_ID: {call_id[:30]}...")
 
 private_key_file = Path(vonage_private_key)
 if not private_key_file.is_absolute():
@@ -136,7 +136,7 @@ print("  - Model invocation successful")
 
 print("\n✓ Stage 2 (Vonage Configuration): READY")
 print("  - VONAGE_APPLICATION_ID set")
-print("  - VONAGE_SESSION_ID set")
+print("  - VONAGE_CALL_ID set")
 print("  - Private key file exists")
 
 print("\n⚠ Stage 3 (Pipecat Transport): DEFERRED TO DOCKER")
@@ -150,7 +150,7 @@ print("""
 To run the full C4b Bedrock + Vonage integration test:
 
 1. Build Docker image:
-   cd tests/c4b_bedrock_nova_sonic
+   cd tests/c4b_bedrock_nova_sonic_serializer
    docker build -t c4b-bedrock-nova-sonic .
 
 2. Run Bedrock echo agent in Docker:
@@ -164,12 +164,12 @@ To run the full C4b Bedrock + Vonage integration test:
 
 3. Join Vonage Playground:
    https://tools.vonage.com/video/playground/
-   (Use session ID from .env)
+   (Use call ID from .env)
 
 4. Publish audio → speak → wait for LLM echo → disconnect
 
 5. Verify logs for success markers:
-    grep "Connected to Vonage Video" logs/c4b-bedrock-nova-sonic-echo.log
+    grep "Connected to Vonage Voice call" logs/c4b-bedrock-nova-sonic-echo.log
     grep "Nova Sonic" logs/c4b-bedrock-nova-sonic-echo.log
     grep "Participant joined" logs/c4b-bedrock-nova-sonic-echo.log
 """)

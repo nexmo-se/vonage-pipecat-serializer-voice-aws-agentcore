@@ -5,8 +5,8 @@ main.py — FastAPI application entry point
 Exposes:
   GET  /           — Health check
   GET  /status     — Agent status
-  POST /join       — Join a Vonage session
-  POST /leave      — Leave the current session
+  POST /join       — Join a Vonage voice call
+  POST /leave      — Leave the current call
   WS   /ws         — Real-time event stream (JSON)
 
 Usage:
@@ -27,14 +27,14 @@ from dotenv import load_dotenv
 from fastapi import Body, FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 
-from agent import VonagePipecatAgent
+from agent import VonageSerializerVoiceAgent
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 logger = structlog.get_logger(__name__)
 
-# Global agent instance (one session at a time for simplicity)
-_agent: VonagePipecatAgent | None = None
+# Global agent instance (one call at a time for simplicity)
+_agent: VonageSerializerVoiceAgent | None = None
 _ws_clients: list[WebSocket] = []
 
 
@@ -43,11 +43,11 @@ _ws_clients: list[WebSocket] = []
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _agent
-    session_id = os.getenv("VONAGE_SESSION_ID", "").strip()
-    if session_id:
-        logger.info("Auto-joining session on startup", session_id=session_id)
-        _agent = VonagePipecatAgent(on_event=_broadcast)
-        _agent.session_id = session_id
+    call_id = os.getenv("VONAGE_CALL_ID", "").strip()
+    if call_id:
+        logger.info("Auto-joining call on startup", call_id=call_id)
+        _agent = VonageSerializerVoiceAgent(on_event=_broadcast)
+        _agent.call_id = call_id
         asyncio.create_task(_agent.start())
     yield
     if _agent:
@@ -57,8 +57,8 @@ async def lifespan(app: FastAPI):
 # ── App ───────────────────────────────────────────────────────────
 
 app = FastAPI(
-    title="Vonage Pipecat AgentCore",
-    description="Real-time AI voice/video agent",
+    title="Vonage Pipecat Serializer Voice AgentCore",
+    description="Real-time AI voice agent using serializer flow",
     version="0.1.0",
     lifespan=lifespan,
 )
@@ -76,14 +76,14 @@ async def status() -> dict[str, Any]:
     if _agent is None:
         return {
             "running": False,
-            "session_id": None,
+            "call_id": None,
             "connected": False,
             "last_error": None,
             "event_counts": {},
         }
     return {
         "running": _agent._task is not None and not _agent._task.done(),
-        "session_id": _agent.session_id,
+        "call_id": _agent.call_id,
         "connected": _agent.connected,
         "last_error": _agent.last_error,
         "event_counts": _agent.event_counts,
@@ -91,41 +91,41 @@ async def status() -> dict[str, Any]:
 
 
 @app.post("/join", response_class=JSONResponse)
-async def join(payload: dict[str, Any] | None = Body(default=None), session_id: str | None = None) -> dict[str, str]:
+async def join(payload: dict[str, Any] | None = Body(default=None), call_id: str | None = None) -> dict[str, str]:
     global _agent
-    payload_session = ""
+    payload_call = ""
     if payload:
-        payload_session = str(payload.get("session_id", "")).strip()
+        payload_call = str(payload.get("call_id", payload.get("session_id", ""))).strip()
 
-    target_session = (payload_session or session_id or os.getenv("VONAGE_SESSION_ID", "")).strip()
-    if not target_session:
+    target_call = (payload_call or call_id or os.getenv("VONAGE_CALL_ID", "")).strip()
+    if not target_call:
         return JSONResponse(
             status_code=400,
-            content={"error": "session_id is required (or set VONAGE_SESSION_ID in .env)"},
+            content={"error": "call_id is required (or set VONAGE_CALL_ID in .env)"},
         )
     if _agent and _agent._task and not _agent._task.done():
         return JSONResponse(
             status_code=409,
             content={"error": "Agent is already running. Call /leave first."},
         )
-    _agent = VonagePipecatAgent(on_event=_broadcast)
-    _agent.session_id = target_session
+    _agent = VonageSerializerVoiceAgent(on_event=_broadcast)
+    _agent.call_id = target_call
     asyncio.create_task(_agent.start())
-    await _broadcast({"event": "agent_joined", "session_id": target_session})
-    logger.info("Agent joining session", session_id=target_session)
-    return {"status": "joining", "session_id": target_session}
+    await _broadcast({"event": "agent_joined", "call_id": target_call})
+    logger.info("Agent joining call", call_id=target_call)
+    return {"status": "joining", "call_id": target_call}
 
 
 @app.post("/leave", response_class=JSONResponse)
 async def leave() -> dict[str, str]:
     global _agent
     if _agent is None:
-        return JSONResponse(status_code=404, content={"error": "No active session"})
-    session_id = _agent.session_id
+        return JSONResponse(status_code=404, content={"error": "No active call"})
+    call_id = _agent.call_id
     await _agent.stop()
     _agent = None
-    await _broadcast({"event": "agent_left", "session_id": session_id})
-    return {"status": "left", "session_id": session_id}
+    await _broadcast({"event": "agent_left", "call_id": call_id})
+    return {"status": "left", "call_id": call_id}
 
 
 @app.websocket("/ws")

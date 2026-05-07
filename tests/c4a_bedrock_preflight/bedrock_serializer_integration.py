@@ -3,7 +3,7 @@
 Bedrock-Pipecat Transport Integration Module
 
 Provides LLM conversation capabilities via AWS Bedrock Nova Sonic
-integrated into the Pipecat transport pipeline.
+integrated into the Pipecat serializer pipeline.
 
 Usage:
     llm = BedrockLLMIntegration(model_id, region, profile_name)
@@ -68,7 +68,7 @@ class BedrockLLMIntegration:
                 retries={"max_attempts": max_attempts, "mode": "standard"},
                 connect_timeout=connect_timeout,
                 read_timeout=read_timeout,
-                user_agent_extra="vonage-pipecat-aws-agentcore-tests/c4b",
+                user_agent_extra="vonage-pipecat-aws-agentcore-tests/c4a",
             )
 
             if self.profile_name:

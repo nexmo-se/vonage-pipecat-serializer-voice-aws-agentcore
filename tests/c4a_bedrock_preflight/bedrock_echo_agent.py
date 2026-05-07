@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
 """
-Test C4b: AWS Bedrock + Vonage Pipecat Transport — Echo Agent
+Test C4a Stage 2: Vonage Transport Echo in the Bedrock-configured environment
 
 Runs a Pipecat pipeline that:
-    1. Joins the Vonage Video session (same as C3)
+    1. Joins the Vonage Voice call (same as C3)
     2. Receives audio from browser participants
-    3. Invokes AWS Bedrock Nova Sonic LLM for text responses
-    4. Echoes back combined response via transport
+    3. Echoes audio straight back via transport (no LLM invocation)
 
 This test validates:
-    - Bedrock LLM integration with Vonage transport
-    - Event handling + LLM invocation coordination
-    - End-to-end session lifecycle with external AI service
+    - Vonage session join and participant lifecycle in the c4a Docker image
+    - Transport audio round-trip before Nova Sonic is added in C4b
+    - Event handling + monitor loop in the Bedrock-configured environment
+
+Note: BedrockLLMIntegration is imported but the pipeline does not call it.
+LLM inference is added in C4b (tests/c4b_bedrock_nova_sonic_serializer).
 
 Platform: Linux only. Run via Docker on macOS — see README.md.
 """
@@ -68,26 +70,22 @@ async def run_bedrock_echo_agent() -> None:
             print(f"WARN: Invalid {name}={value!r}, using default {default}")
             return default
 
-    # ── Vonage Video configuration ────────────────────────────────
+    # ── Vonage Voice configuration ────────────────────────────────
     application_id = os.getenv("VONAGE_APPLICATION_ID", "").strip()
     private_key_path = os.getenv("VONAGE_PRIVATE_KEY", "private.key").strip()
-    session_id = os.getenv("VONAGE_SESSION_ID", "").strip()
+    call_id = os.getenv("VONAGE_CALL_ID", "").strip()
 
     # ── AWS Bedrock configuration ─────────────────────────────────
     bedrock_model_id = os.getenv("BEDROCK_MODEL_ID", "amazon.nova-2-sonic-v1:0").strip()
     aws_region = os.getenv("AWS_REGION", "us-east-1").strip()
     aws_profile = os.getenv("AWS_PROFILE", os.getenv("AWS_DEFAULT_PROFILE", "")).strip()
-    initial_user_message = os.getenv(
-        "BEDROCK_INITIAL_USER_MESSAGE",
-        "Please greet the participant briefly and ask how you can help.",
-    ).strip()
 
     # ── Validate required env vars ────────────────────────────────
     missing: list[str] = []
     if not application_id:
         missing.append("VONAGE_APPLICATION_ID")
-    if not session_id:
-        missing.append("VONAGE_SESSION_ID")
+    if not call_id:
+        missing.append("VONAGE_CALL_ID")
     if missing:
         print(f"ERROR: Missing env vars: {', '.join(missing)}")
         sys.exit(1)
@@ -142,18 +140,13 @@ async def run_bedrock_echo_agent() -> None:
 
     # ── Imports ───────────────────────────────────────────────────
     try:
-        import boto3
         from vonage import Auth, Vonage
         from vonage_video import TokenOptions
         from loguru import logger
-        from pipecat.frames.frames import LLMContextFrame
         from pipecat.audio.vad.silero import SileroVADAnalyzer
         from pipecat.pipeline.pipeline import Pipeline
         from pipecat.pipeline.runner import PipelineRunner
         from pipecat.pipeline.task import PipelineParams, PipelineTask
-        from pipecat.processors.aggregators.llm_context import LLMContext
-        from pipecat.processors.aggregators.llm_response_universal import LLMContextAggregatorPair
-        from pipecat.services.aws.nova_sonic.llm import AWSNovaSonicLLMService, Params
         from pipecat.transports.vonage.video_connector import (
             SubscribeSettings,
             VonageVideoConnectorTransport,
@@ -164,45 +157,21 @@ async def run_bedrock_echo_agent() -> None:
         print("  Run: pip install -r requirements.txt")
         sys.exit(1)
 
-    session_kwargs = {"region_name": aws_region}
-    if aws_profile:
-        session_kwargs["profile_name"] = aws_profile
-
+    # ── Import Bedrock integration ────────────────────────────────
     try:
-        aws_session = boto3.Session(**session_kwargs)
-        credentials = aws_session.get_credentials()
-        if credentials is None:
-            raise RuntimeError("boto3 could not resolve AWS credentials")
-        frozen_credentials = credentials.get_frozen_credentials()
-    except Exception as exc:
-        print(f"ERROR: Unable to resolve AWS credentials for Nova Sonic — {exc}")
+        from bedrock_serializer_integration import BedrockLLMIntegration, BedrockEchoContextManager
+    except ImportError as exc:
+        print(f"ERROR: Bedrock integration not found — {exc}")
         sys.exit(1)
 
-    print(f"Initializing Nova Sonic ({bedrock_model_id}) in {aws_region}…")
-    if aws_profile:
-        print(f"Using AWS profile {aws_profile} via mounted credentials")
-    nova_sonic = AWSNovaSonicLLMService(
-        access_key_id=frozen_credentials.access_key,
-        secret_access_key=frozen_credentials.secret_key,
-        session_token=frozen_credentials.token,
+    # ── Initialize Bedrock LLM ────────────────────────────────────
+    print(f"Initializing Bedrock LLM ({bedrock_model_id}) in {aws_region}…")
+    llm = BedrockLLMIntegration(
+        model_id=bedrock_model_id,
         region=aws_region,
-        model=bedrock_model_id,
-        params=Params(
-            input_sample_rate=audio_in_sample_rate,
-            input_channel_count=audio_in_channels,
-            output_sample_rate=audio_out_sample_rate,
-            output_channel_count=audio_out_channels,
-        ),
-        system_instruction=(
-            "You are a helpful voice assistant. Respond warmly and briefly in one or two short sentences."
-        ),
+        profile_name=aws_profile if aws_profile else None,
     )
-    # AWSNovaSonicLLMService requires initial context before it finishes session setup.
-    context_messages = []
-    if initial_user_message:
-        context_messages.append({"role": "user", "content": initial_user_message})
-    context = LLMContext(messages=context_messages)
-    context_aggregator = LLMContextAggregatorPair(context)
+    llm_context = BedrockEchoContextManager(llm)
 
     # ── Generate publisher token ──────────────────────────────────
     client = Vonage(
@@ -213,7 +182,7 @@ async def run_bedrock_echo_agent() -> None:
     )
     token = client.video.generate_client_token(
         TokenOptions(
-            session_id=session_id,
+            session_id=call_id,
             role="publisher",
         )
     )
@@ -223,12 +192,12 @@ async def run_bedrock_echo_agent() -> None:
     if enable_pipecat_logger:
         logger.enable("pipecat")
 
-    print(f"Initialising Vonage Pipecat transport for session {session_id}…")
+    print(f"Initialising Vonage Pipecat serializer for call {call_id}…")
 
-    # ── Build Pipecat pipeline ────────────────────────────────────
+    # ── Build Pipecat pipeline (same structure as C3) ─────────────
     transport = VonageVideoConnectorTransport(
         application_id=application_id,
-        session_id=session_id,
+        session_id=call_id,
         token=token,
         params=VonageVideoConnectorTransportParams(
             audio_in_enabled=audio_in_enabled,
@@ -257,28 +226,24 @@ async def run_bedrock_echo_agent() -> None:
     )
 
     pipeline = Pipeline([
-        transport.input(),   # Receive participant audio from Vonage session
-        context_aggregator.user(),
-        nova_sonic,          # Speech-to-speech via AWS Nova Sonic
-        context_aggregator.assistant(),
-        transport.output(),  # Publish response audio back into the session
+        transport.input(),   # Receive audio from Vonage session
+        transport.output(),  # Send audio frames straight back into the session
     ])
 
     task = PipelineTask(
         pipeline,
         params=PipelineParams(allow_interruptions=True),
-        cancel_on_idle_timeout=False,
-        idle_timeout_secs=None,
     )
 
     active_streams: set[str] = set()
     active_subscribers: set[str] = set()
-    context_seeded = False
     event_counts = {
         "participant_joined": 0,
         "participant_left": 0,
         "client_connected": 0,
         "client_disconnected": 0,
+        "llm_invocations": 0,
+        "llm_errors": 0,
         "errors": 0,
     }
 
@@ -286,15 +251,6 @@ async def run_bedrock_echo_agent() -> None:
         if not debug_event_payloads:
             return
         logger.debug(f"{event_name} payload: {json.dumps(payload, sort_keys=True)}")
-
-    async def seed_initial_context(reason: str) -> None:
-        nonlocal context_seeded
-        if context_seeded:
-            return
-        print(f"  Seeding initial Nova Sonic context ({reason})")
-        logger.info("Seeding initial Nova Sonic context ({})", reason)
-        await task.queue_frame(LLMContextFrame(context))
-        context_seeded = True
 
     async def monitor_loop() -> None:
         while True:
@@ -310,10 +266,9 @@ async def run_bedrock_echo_agent() -> None:
 
     @transport.event_handler("on_joined")
     async def on_joined(transport, data):
-        print(f"✓ Connected to Vonage Video session {data['sessionId']}")
-        print(f"✓ Nova Sonic ({bedrock_model_id}) ready for participant interactions")
+        print(f"✓ Connected to Vonage Voice call {data['sessionId']}")
+        print(f"✓ Bedrock LLM ({bedrock_model_id}) ready for participant interactions")
         maybe_dump_event_payload("on_joined", data)
-        await seed_initial_context("on_joined")
 
     @transport.event_handler("on_participant_joined")
     async def on_participant_joined(transport, data):
@@ -323,7 +278,6 @@ async def run_bedrock_echo_agent() -> None:
             active_streams.add(stream_id)
         print(f"  Participant joined with stream {stream_id}")
         maybe_dump_event_payload("on_participant_joined", data)
-        await seed_initial_context("on_participant_joined")
         if manual_subscribe and stream_id != "unknown":
             print(
                 f"  Manual subscribe stream={stream_id} "
@@ -365,7 +319,6 @@ async def run_bedrock_echo_agent() -> None:
         if enable_bedrock_debug:
             logger.debug(f"on_client_connected data: {json.dumps(data, default=str)}")
         maybe_dump_event_payload("on_client_connected", data)
-        await seed_initial_context("on_client_connected")
 
     @transport.event_handler("on_client_disconnected")
     async def on_client_disconnected(transport, data):
@@ -378,7 +331,7 @@ async def run_bedrock_echo_agent() -> None:
 
     @transport.event_handler("on_left")
     async def on_left(transport, data):
-        print(f"Left Vonage Video session {data.get('sessionId', '')}".rstrip())
+        print(f"Left Vonage Voice call {data.get('sessionId', '')}".rstrip())
         maybe_dump_event_payload("on_left", data)
 
     @transport.event_handler("on_error")
@@ -387,15 +340,15 @@ async def run_bedrock_echo_agent() -> None:
         print(f"ERROR: Transport error — {error}")
         logger.exception("transport_error")
 
-    print("Pipecat pipeline with Nova Sonic running — speak into your browser microphone")
-    print("  Audio received → Nova Sonic processes → spoken response published back")
+    print("Pipecat serializer echo running — speak into your browser microphone")
+    print("  Audio received → echoed back directly (no LLM — transport connectivity test)")
     print(
         f"  Transport config: log_level={video_connector_log_level}, "
         f"audio_in={audio_in_enabled}, audio_out={audio_out_enabled}, "
         f"video_in={video_in_enabled}, video_out={video_out_enabled}, "
         f"session_migration={session_enable_migration}"
     )
-    print(f"  AI config: model={bedrock_model_id}, region={aws_region}")
+    print(f"  Env: model={bedrock_model_id}, region={aws_region} (model unused in Stage 2)")
     print("Press Ctrl+C to stop.\n")
 
     runner = PipelineRunner()
@@ -410,4 +363,4 @@ if __name__ == "__main__":
     try:
         asyncio.run(run_bedrock_echo_agent())
     except KeyboardInterrupt:
-        print("\nStopped by user. Test C4b Bedrock integration complete ✓")
+        print("\nStopped by user. Test C4a Bedrock integration complete ✓")

@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-Test C3: Pipecat Transport — Vonage Video Echo Bot
+Test C3: Pipecat Serializer — Vonage Voice Echo Bot
 
 Runs a Pipecat pipeline that:
-    1. Joins the Vonage Video session via the official Vonage Pipecat transport
+    1. Joins the Vonage voice call via the Pipecat serializer bridge
   2. Receives audio from browser participants
     3. Passes audio through VAD and a simple echo stage
-    4. Sends the audio back into the session
+    4. Sends the audio back into the call
 
 Platform: Linux only.  Run via Docker on macOS — see README.md.
 """
@@ -65,14 +65,14 @@ async def run_echo_bot() -> None:
 
     application_id = os.getenv("VONAGE_APPLICATION_ID", "").strip()
     private_key_path = os.getenv("VONAGE_PRIVATE_KEY", "private.key").strip()
-    session_id = os.getenv("VONAGE_SESSION_ID", "").strip()
+    call_id = os.getenv("VONAGE_CALL_ID", os.getenv("VONAGE_SESSION_ID", "")).strip()
 
     # ── Validate env vars ─────────────────────────────────────────
     missing: list[str] = []
     if not application_id:
         missing.append("VONAGE_APPLICATION_ID")
-    if not session_id:
-        missing.append("VONAGE_SESSION_ID")
+    if not call_id:
+        missing.append("VONAGE_CALL_ID")
     if missing:
         print(f"ERROR: Missing env vars: {', '.join(missing)}")
         sys.exit(1)
@@ -84,8 +84,8 @@ async def run_echo_bot() -> None:
         print(f"ERROR: Private key not found: {private_key_file}")
         sys.exit(1)
 
-    # Optional transport tuning aligned with official docs
-    video_connector_log_level = os.getenv("VONAGE_VIDEO_CONNECTOR_LOG_LEVEL", "INFO").strip() or "INFO"
+    # Optional serializer bridge tuning aligned with official docs
+    bridge_log_level = os.getenv("VONAGE_VOICE_BRIDGE_LOG_LEVEL", os.getenv("VONAGE_VIDEO_CONNECTOR_LOG_LEVEL", "INFO")).strip() or "INFO"
     session_enable_migration = env_bool("VONAGE_SESSION_ENABLE_MIGRATION", False)
     clear_buffers_on_interruption = env_bool("VONAGE_CLEAR_BUFFERS_ON_INTERRUPTION", True)
     enable_pipecat_logger = env_bool("VONAGE_ENABLE_PIPECAT_LOGGER", True)
@@ -152,7 +152,7 @@ async def run_echo_bot() -> None:
     )
     token = client.video.generate_client_token(
         TokenOptions(
-            session_id=session_id,
+            session_id=call_id,
             role="publisher",
         )
     )
@@ -162,12 +162,12 @@ async def run_echo_bot() -> None:
     if enable_pipecat_logger:
         logger.enable("pipecat")
 
-    print(f"Initialising Vonage Pipecat transport for session {session_id} …")
+    print(f"Initialising Vonage Pipecat serializer for call {call_id} …")
 
     # ── Build Pipecat pipeline ────────────────────────────────────
-    transport = VonageVideoConnectorTransport(
+    serializer_bridge = VonageVideoConnectorTransport(
         application_id=application_id,
-        session_id=session_id,
+        session_id=call_id,
         token=token,
         params=VonageVideoConnectorTransportParams(
             audio_in_enabled=audio_in_enabled,
@@ -190,14 +190,14 @@ async def run_echo_bot() -> None:
             video_in_preferred_framerate=preferred_framerate,
             publisher_enable_opus_dtx=publisher_enable_opus_dtx,
             session_enable_migration=session_enable_migration,
-            video_connector_log_level=video_connector_log_level,
+            video_connector_log_level=bridge_log_level,
             clear_buffers_on_interruption=clear_buffers_on_interruption,
         ),
     )
 
     pipeline = Pipeline([
-        transport.input(),   # Receive audio from Vonage session
-        transport.output(),  # Send audio frames straight back into the session
+        serializer_bridge.input(),   # Receive audio from call stream
+        serializer_bridge.output(),  # Send audio frames straight back into the call
     ])
 
     task = PipelineTask(
@@ -232,12 +232,12 @@ async def run_echo_bot() -> None:
 
     monitor_task = asyncio.create_task(monitor_loop()) if monitor_enabled else None
 
-    @transport.event_handler("on_joined")
+    @serializer_bridge.event_handler("on_joined")
     async def on_joined(transport, data):
-        print(f"✓ Connected to Vonage Video session {data['sessionId']}")
+        print(f"✓ Connected to Vonage Voice call {data['sessionId']}")
         maybe_dump_event_payload("on_joined", data)
 
-    @transport.event_handler("on_participant_joined")
+    @serializer_bridge.event_handler("on_participant_joined")
     async def on_participant_joined(transport, data):
         event_counts["participant_joined"] += 1
         stream_id = data.get("streamId", "unknown")
@@ -251,7 +251,7 @@ async def run_echo_bot() -> None:
                 f"(audio=True, video={manual_subscribe_video}, "
                 f"resolution={preferred_resolution[0]}x{preferred_resolution[1]}, fps={preferred_framerate})"
             )
-            await transport.subscribe_to_stream(
+            await serializer_bridge.subscribe_to_stream(
                 stream_id,
                 SubscribeSettings(
                     subscribe_to_audio=True,
@@ -261,13 +261,13 @@ async def run_echo_bot() -> None:
                 ),
             )
 
-    @transport.event_handler("on_first_participant_joined")
+    @serializer_bridge.event_handler("on_first_participant_joined")
     async def on_first_participant_joined(transport, data):
         stream_id = data.get("streamId", "unknown")
         print(f"  First participant joined with stream {stream_id}")
         maybe_dump_event_payload("on_first_participant_joined", data)
 
-    @transport.event_handler("on_participant_left")
+    @serializer_bridge.event_handler("on_participant_left")
     async def on_participant_left(transport, data):
         event_counts["participant_left"] += 1
         stream_id = data.get("streamId", "unknown")
@@ -276,7 +276,7 @@ async def run_echo_bot() -> None:
         print(f"  Participant left stream {stream_id}")
         maybe_dump_event_payload("on_participant_left", data)
 
-    @transport.event_handler("on_client_connected")
+    @serializer_bridge.event_handler("on_client_connected")
     async def on_client_connected(transport, data):
         event_counts["client_connected"] += 1
         subscriber_id = data.get("subscriberId", "unknown")
@@ -285,7 +285,7 @@ async def run_echo_bot() -> None:
         print(f"  Client connected to stream {subscriber_id}")
         maybe_dump_event_payload("on_client_connected", data)
 
-    @transport.event_handler("on_client_disconnected")
+    @serializer_bridge.event_handler("on_client_disconnected")
     async def on_client_disconnected(transport, data):
         event_counts["client_disconnected"] += 1
         subscriber_id = data.get("subscriberId", "unknown")
@@ -294,21 +294,21 @@ async def run_echo_bot() -> None:
         print(f"  Client disconnected from stream {subscriber_id}")
         maybe_dump_event_payload("on_client_disconnected", data)
 
-    @transport.event_handler("on_left")
+    @serializer_bridge.event_handler("on_left")
     async def on_left(transport, data):
-        print(f"Left Vonage Video session {data.get('sessionId', '')}".rstrip())
+        print(f"Left Vonage Voice call {data.get('sessionId', '')}".rstrip())
         maybe_dump_event_payload("on_left", data)
 
-    @transport.event_handler("on_error")
+    @serializer_bridge.event_handler("on_error")
     async def on_error(transport, error):
         event_counts["errors"] += 1
-        print(f"ERROR: Transport error — {error}")
+        print(f"ERROR: Serializer bridge error — {error}")
         logger.exception("transport_error")
 
     print("Pipecat pipeline running — speak into your browser microphone")
     print("  Audio received → echoed back as audio")
     print(
-        f"  Transport config: log_level={video_connector_log_level}, "
+        f"  Serializer bridge config: log_level={bridge_log_level}, "
         f"audio_in={audio_in_enabled}, audio_out={audio_out_enabled}, "
         f"video_in={video_in_enabled}, video_out={video_out_enabled}, "
         f"session_migration={session_enable_migration}, "

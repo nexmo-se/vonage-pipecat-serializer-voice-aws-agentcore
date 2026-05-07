@@ -1,6 +1,6 @@
 FROM python:3.13-slim
 
-# System dependencies for Video Connector + audio processing
+# System dependencies for Voice SDK + audio processing
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     libssl-dev \
@@ -20,7 +20,7 @@ COPY requirements.txt ./
 RUN uv pip install --system -r requirements.txt
 
 # Copy application source
-COPY main.py agent.py ./
+COPY main.py agent.py voice_serializer_bridge.py ./
 
 EXPOSE 8000
 

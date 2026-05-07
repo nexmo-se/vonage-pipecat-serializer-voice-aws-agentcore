@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Application agent runtime built from the validated C4 transport pipeline."""
+"""Application agent runtime built from the validated C4 serializer pipeline."""
 
 from __future__ import annotations
 
@@ -12,14 +12,15 @@ from typing import Any, Awaitable, Callable
 
 import structlog
 from dotenv import load_dotenv
+from voice_serializer_bridge import load_serializer_bridge_classes
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 logger = structlog.get_logger(__name__)
 
 
-class VonagePipecatAgent:
-    """Manages the Pipecat transport + Nova Sonic pipeline for one session."""
+class VonageSerializerVoiceAgent:
+    """Manages the Pipecat serializer + voice pipeline for one call."""
 
     def __init__(
         self,
@@ -30,17 +31,11 @@ class VonagePipecatAgent:
         self._monitor_task: asyncio.Task | None = None
         self._runner = None
         self._pipeline_task = None
-        self.session_id: str = os.getenv("VONAGE_SESSION_ID", "")
+        self.call_id: str = os.getenv("VONAGE_CALL_ID", "")
         self.connected: bool = False
         self.last_error: str | None = None
         self.on_event = on_event
-        self.event_counts: dict[str, int] = {
-            "participant_joined": 0,
-            "participant_left": 0,
-            "client_connected": 0,
-            "client_disconnected": 0,
-            "errors": 0,
-        }
+        self.event_counts: dict[str, int] = {"joined": 0, "left": 0, "media_started": 0, "media_stopped": 0, "errors": 0}
 
     async def _emit(self, event: dict[str, Any]) -> None:
         if self.on_event is None:
@@ -59,13 +54,13 @@ class VonagePipecatAgent:
         if self._task and not self._task.done():
             logger.warning("Agent already running")
             return
-        if not self.session_id:
-            raise ValueError("session_id is required")
+        if not self.call_id:
+            raise ValueError("call_id is required")
         self.last_error = None
         self._task = asyncio.create_task(self._run_pipeline())
 
     async def stop(self) -> None:
-        """Stop the pipeline and disconnect from the session."""
+        """Stop the pipeline and disconnect from the call."""
         if self._monitor_task and not self._monitor_task.done():
             self._monitor_task.cancel()
             try:
@@ -89,7 +84,7 @@ class VonagePipecatAgent:
                 pass
 
         self.connected = False
-        await self._emit({"event": "agent_stopped", "session_id": self.session_id})
+        await self._emit({"event": "agent_stopped", "call_id": self.call_id})
         logger.info("Agent stopped")
 
     # ── Pipeline ──────────────────────────────────────────────────
@@ -125,10 +120,7 @@ class VonagePipecatAgent:
             from pipecat.processors.aggregators.llm_context import LLMContext
             from pipecat.processors.aggregators.llm_response_universal import LLMContextAggregatorPair
             from pipecat.services.aws.nova_sonic.llm import AWSNovaSonicLLMService, Params
-            from pipecat.transports.vonage.video_connector import (
-                VonageVideoConnectorTransport,
-                VonageVideoConnectorTransportParams,
-            )
+            VoiceSerializerBridge, VoiceSerializerBridgeParams = load_serializer_bridge_classes()
         except ImportError as exc:
             self.last_error = f"missing dependency: {exc}"
             logger.error("Missing dependency", error=str(exc))
@@ -137,6 +129,7 @@ class VonagePipecatAgent:
 
         application_id = os.getenv("VONAGE_APPLICATION_ID", "").strip()
         private_key_path = os.getenv("VONAGE_PRIVATE_KEY", "private.key").strip()
+        legacy_session_id = os.getenv("VONAGE_SESSION_ID", "").strip()
         aws_region = os.getenv("AWS_REGION", "us-east-1").strip()
         bedrock_model_id = os.getenv("BEDROCK_MODEL_ID", "amazon.nova-2-sonic-v1:0").strip()
         aws_profile = os.getenv("AWS_PROFILE", os.getenv("AWS_DEFAULT_PROFILE", "")).strip()
@@ -153,8 +146,10 @@ class VonagePipecatAgent:
         missing: list[str] = []
         if not application_id:
             missing.append("VONAGE_APPLICATION_ID")
-        if not self.session_id:
-            missing.append("VONAGE_SESSION_ID")
+        if not self.call_id:
+            self.call_id = legacy_session_id
+        if not self.call_id:
+            missing.append("VONAGE_CALL_ID")
         if missing:
             self.last_error = f"missing env vars: {', '.join(missing)}"
             logger.error("Invalid environment", missing=missing)
@@ -234,16 +229,25 @@ class VonagePipecatAgent:
                     code=error_code,
                 )
 
-        # Optional transport tuning from the C3/C4 test flow.
-        video_connector_log_level = os.getenv("VONAGE_VIDEO_CONNECTOR_LOG_LEVEL", "INFO").strip() or "INFO"
-        session_enable_migration = env_bool("VONAGE_SESSION_ENABLE_MIGRATION", False)
-        clear_buffers_on_interruption = env_bool("VONAGE_CLEAR_BUFFERS_ON_INTERRUPTION", True)
-        audio_in_sample_rate = env_int("VONAGE_AUDIO_IN_SAMPLE_RATE", 16000)
-        audio_out_sample_rate = env_int("VONAGE_AUDIO_OUT_SAMPLE_RATE", 24000)
-        audio_in_channels = env_int("VONAGE_AUDIO_IN_CHANNELS", 1)
-        audio_out_channels = env_int("VONAGE_AUDIO_OUT_CHANNELS", 1)
-        monitor_enabled = env_bool("VONAGE_MONITOR_ENABLED", True)
-        monitor_interval_seconds = env_int("VONAGE_MONITOR_INTERVAL_SECONDS", 15)
+        # Optional serializer-bridge tuning from the C3/C4 test flow.
+        bridge_log_level = (
+            os.getenv("VONAGE_VOICE_BRIDGE_LOG_LEVEL", os.getenv("VONAGE_VIDEO_CONNECTOR_LOG_LEVEL", "INFO")).strip()
+            or "INFO"
+        )
+        session_enable_migration = env_bool("VONAGE_CALL_ENABLE_MIGRATION", env_bool("VONAGE_SESSION_ENABLE_MIGRATION", False))
+        clear_buffers_on_interruption = env_bool(
+            "VONAGE_CALL_CLEAR_BUFFERS_ON_INTERRUPTION",
+            env_bool("VONAGE_CLEAR_BUFFERS_ON_INTERRUPTION", True),
+        )
+        audio_in_sample_rate = env_int("VONAGE_CALL_AUDIO_IN_SAMPLE_RATE", env_int("VONAGE_AUDIO_IN_SAMPLE_RATE", 16000))
+        audio_out_sample_rate = env_int("VONAGE_CALL_AUDIO_OUT_SAMPLE_RATE", env_int("VONAGE_AUDIO_OUT_SAMPLE_RATE", 24000))
+        audio_in_channels = env_int("VONAGE_CALL_AUDIO_IN_CHANNELS", env_int("VONAGE_AUDIO_IN_CHANNELS", 1))
+        audio_out_channels = env_int("VONAGE_CALL_AUDIO_OUT_CHANNELS", env_int("VONAGE_AUDIO_OUT_CHANNELS", 1))
+        monitor_enabled = env_bool("VONAGE_CALL_MONITOR_ENABLED", env_bool("VONAGE_MONITOR_ENABLED", True))
+        monitor_interval_seconds = env_int(
+            "VONAGE_CALL_MONITOR_INTERVAL_SECONDS",
+            env_int("VONAGE_MONITOR_INTERVAL_SECONDS", 15),
+        )
         # AWS Nova Sonic docs describe an ~8 minute connection window.
         # Emit an early renewal signal and optionally stop the pipeline at limit.
         nova_session_limit_seconds = env_int("NOVA_SESSION_LIMIT_SECONDS", 470)
@@ -260,12 +264,7 @@ class VonagePipecatAgent:
                     private_key=str(private_key_file),
                 )
             )
-            token = client.video.generate_client_token(
-                TokenOptions(
-                    session_id=self.session_id,
-                    role="publisher",
-                )
-            )
+            token = client.video.generate_client_token(TokenOptions(session_id=self.call_id, role="publisher"))
             if isinstance(token, bytes):
                 token = token.decode("utf-8")
         except Exception as exc:
@@ -331,7 +330,7 @@ class VonagePipecatAgent:
                     output_channel_count=audio_out_channels,
                 ),
                 system_instruction=(
-                    "You are a helpful voice assistant for a Vonage video session. "
+                    "You are a helpful voice assistant for a Vonage voice call. "
                     "Keep responses brief and conversational."
                 ),
             )
@@ -341,16 +340,16 @@ class VonagePipecatAgent:
             await self._emit({"event": "agent_error", "error": self.last_error})
             return
 
-        transport = VonageVideoConnectorTransport(
+        serializer_bridge = VoiceSerializerBridge(
             application_id=application_id,
-            session_id=self.session_id,
+            session_id=self.call_id,
             token=token,
-            params=VonageVideoConnectorTransportParams(
+            params=VoiceSerializerBridgeParams(
                 audio_in_enabled=True,
                 audio_out_enabled=True,
                 video_in_enabled=False,
                 video_out_enabled=False,
-                publisher_name=os.getenv("VONAGE_PUBLISHER_NAME", "Vonage AI Assistant").strip() or "Vonage AI Assistant",
+                publisher_name=os.getenv("VONAGE_VOICE_PUBLISHER_NAME", os.getenv("VONAGE_PUBLISHER_NAME", "Vonage AI Assistant")).strip() or "Vonage AI Assistant",
                 audio_in_sample_rate=audio_in_sample_rate,
                 audio_in_channels=audio_in_channels,
                 audio_out_sample_rate=audio_out_sample_rate,
@@ -359,18 +358,12 @@ class VonagePipecatAgent:
                 audio_in_auto_subscribe=True,
                 video_in_auto_subscribe=False,
                 session_enable_migration=session_enable_migration,
-                video_connector_log_level=video_connector_log_level,
+                video_connector_log_level=bridge_log_level,
                 clear_buffers_on_interruption=clear_buffers_on_interruption,
             ),
         )
 
-        pipeline = Pipeline([
-            transport.input(),
-            context_aggregator.user(),
-            nova_sonic,
-            context_aggregator.assistant(),
-            transport.output(),
-        ])
+        pipeline = Pipeline([serializer_bridge.input(), context_aggregator.user(), nova_sonic, context_aggregator.assistant(), serializer_bridge.output()])
 
         self._pipeline_task = PipelineTask(
             pipeline,
@@ -421,7 +414,7 @@ class VonagePipecatAgent:
                     await self._emit(
                         {
                             "event": "session_renewal_recommended",
-                            "session_id": self.session_id,
+                            "call_id": self.call_id,
                             "session_age_seconds": session_age_seconds,
                             "warn_after_seconds": nova_session_warn_seconds,
                             "limit_seconds": nova_session_limit_seconds,
@@ -443,7 +436,7 @@ class VonagePipecatAgent:
                     await self._emit(
                         {
                             "event": "session_renewal_required",
-                            "session_id": self.session_id,
+                            "call_id": self.call_id,
                             "session_age_seconds": session_age_seconds,
                             "limit_seconds": nova_session_limit_seconds,
                             "error": self.last_error,
@@ -457,64 +450,64 @@ class VonagePipecatAgent:
         if monitor_enabled:
             self._monitor_task = asyncio.create_task(monitor_loop())
 
-        @transport.event_handler("on_joined")
-        async def on_joined(_transport, data):
+        @serializer_bridge.event_handler("on_joined")
+        async def on_joined(_bridge, data):
             nonlocal session_started_at
             self.connected = True
             session_started_at = asyncio.get_running_loop().time()
-            logger.info("Joined session", session_id=data.get("sessionId"), model=bedrock_model_id)
-            await self._emit({"event": "joined", "session_id": data.get("sessionId")})
+            self.event_counts["joined"] += 1
+            logger.info("Joined voice call", call_id=data.get("sessionId"), model=bedrock_model_id)
+            await self._emit({"event": "call_joined", "call_id": data.get("sessionId")})
 
-        @transport.event_handler("on_participant_joined")
-        async def on_participant_joined(_transport, data):
-            self.event_counts["participant_joined"] += 1
-            logger.info("Participant joined", stream_id=data.get("streamId"))
+        @serializer_bridge.event_handler("on_participant_joined")
+        async def on_participant_joined(_bridge, data):
+            self.event_counts["media_started"] += 1
+            logger.info("Voice media stream started", stream_id=data.get("streamId"))
             await self._emit({
-                "event": "participant_joined",
+                "event": "media_started",
                 "stream_id": data.get("streamId"),
                 "connection_data": data.get("connectionData"),
             })
-            await seed_initial_context("on_participant_joined")
+            await seed_initial_context("on_media_started")
 
-        @transport.event_handler("on_participant_left")
-        async def on_participant_left(_transport, data):
-            self.event_counts["participant_left"] += 1
-            logger.info("Participant left", stream_id=data.get("streamId"))
+        @serializer_bridge.event_handler("on_participant_left")
+        async def on_participant_left(_bridge, data):
+            self.event_counts["media_stopped"] += 1
+            logger.info("Voice media stream stopped", stream_id=data.get("streamId"))
             await self._emit({
-                "event": "participant_left",
+                "event": "media_stopped",
                 "stream_id": data.get("streamId"),
                 "connection_data": data.get("connectionData"),
             })
 
-        @transport.event_handler("on_client_connected")
-        async def on_client_connected(_transport, data):
-            self.event_counts["client_connected"] += 1
-            logger.info("Client connected", subscriber_id=data.get("subscriberId"))
-            await self._emit({"event": "client_connected", "subscriber_id": data.get("subscriberId")})
+        @serializer_bridge.event_handler("on_client_connected")
+        async def on_client_connected(_bridge, data):
+            logger.info("Serializer client connected", subscriber_id=data.get("subscriberId"))
+            await self._emit({"event": "serializer_client_connected", "subscriber_id": data.get("subscriberId")})
             await seed_initial_context("on_client_connected")
 
-        @transport.event_handler("on_client_disconnected")
-        async def on_client_disconnected(_transport, data):
-            self.event_counts["client_disconnected"] += 1
-            logger.info("Client disconnected", subscriber_id=data.get("subscriberId"))
-            await self._emit({"event": "client_disconnected", "subscriber_id": data.get("subscriberId")})
+        @serializer_bridge.event_handler("on_client_disconnected")
+        async def on_client_disconnected(_bridge, data):
+            logger.info("Serializer client disconnected", subscriber_id=data.get("subscriberId"))
+            await self._emit({"event": "serializer_client_disconnected", "subscriber_id": data.get("subscriberId")})
 
-        @transport.event_handler("on_left")
-        async def on_left(_transport, data):
+        @serializer_bridge.event_handler("on_left")
+        async def on_left(_bridge, data):
             self.connected = False
-            logger.info("Left session", session_id=data.get("sessionId"))
-            await self._emit({"event": "left", "session_id": data.get("sessionId")})
+            self.event_counts["left"] += 1
+            logger.info("Left voice call", call_id=data.get("sessionId"))
+            await self._emit({"event": "call_left", "call_id": data.get("sessionId")})
 
-        @transport.event_handler("on_error")
-        async def on_error(_transport, error):
+        @serializer_bridge.event_handler("on_error")
+        async def on_error(_bridge, error):
             self.event_counts["errors"] += 1
             self.last_error = str(error)
-            logger.error("Transport error", error=error)
+            logger.error("Serializer bridge error", error=error)
             await self._emit({"event": "agent_error", "error": self.last_error})
 
         logger.info(
             "Pipeline starting",
-            session_id=self.session_id,
+            session_id=self.call_id,
             aws_region=aws_region,
             model=bedrock_model_id,
             aws_profile=aws_profile or None,
@@ -524,7 +517,7 @@ class VonagePipecatAgent:
         )
         await self._emit({
             "event": "agent_starting",
-            "session_id": self.session_id,
+            "call_id": self.call_id,
             "model": bedrock_model_id,
             "region": aws_region,
             "agentcore_bootstrap_enabled": bool(agentcore_runtime_arn),
