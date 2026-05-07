@@ -3,7 +3,7 @@
 Test C4a Stage 2: Vonage Transport Echo in the Bedrock-configured environment
 
 Runs a Pipecat pipeline that:
-    1. Joins the Vonage Video session (same as C3)
+    1. Joins the Vonage Voice session (same as C3)
     2. Receives audio from browser participants
     3. Echoes audio straight back via transport (no LLM invocation)
 
@@ -13,7 +13,7 @@ This test validates:
     - Event handling + monitor loop in the Bedrock-configured environment
 
 Note: BedrockLLMIntegration is imported but the pipeline does not call it.
-LLM inference is added in C4b (tests/c4b_bedrock_nova_sonic).
+LLM inference is added in C4b (tests/c4b_bedrock_nova_sonic_serializer).
 
 Platform: Linux only. Run via Docker on macOS — see README.md.
 """
@@ -70,10 +70,10 @@ async def run_bedrock_echo_agent() -> None:
             print(f"WARN: Invalid {name}={value!r}, using default {default}")
             return default
 
-    # ── Vonage Video configuration ────────────────────────────────
+    # ── Vonage Voice configuration ────────────────────────────────
     application_id = os.getenv("VONAGE_APPLICATION_ID", "").strip()
     private_key_path = os.getenv("VONAGE_PRIVATE_KEY", "private.key").strip()
-    session_id = os.getenv("VONAGE_SESSION_ID", "").strip()
+    call_id = os.getenv("VONAGE_CALL_ID", "").strip()
 
     # ── AWS Bedrock configuration ─────────────────────────────────
     bedrock_model_id = os.getenv("BEDROCK_MODEL_ID", "amazon.nova-2-sonic-v1:0").strip()
@@ -84,8 +84,8 @@ async def run_bedrock_echo_agent() -> None:
     missing: list[str] = []
     if not application_id:
         missing.append("VONAGE_APPLICATION_ID")
-    if not session_id:
-        missing.append("VONAGE_SESSION_ID")
+    if not call_id:
+        missing.append("VONAGE_CALL_ID")
     if missing:
         print(f"ERROR: Missing env vars: {', '.join(missing)}")
         sys.exit(1)
@@ -182,7 +182,7 @@ async def run_bedrock_echo_agent() -> None:
     )
     token = client.video.generate_client_token(
         TokenOptions(
-            session_id=session_id,
+            session_id=call_id,
             role="publisher",
         )
     )
@@ -192,12 +192,12 @@ async def run_bedrock_echo_agent() -> None:
     if enable_pipecat_logger:
         logger.enable("pipecat")
 
-    print(f"Initialising Vonage Pipecat transport for session {session_id}…")
+    print(f"Initialising Vonage Pipecat serializer for session {call_id}…")
 
     # ── Build Pipecat pipeline (same structure as C3) ─────────────
     transport = VonageVideoConnectorTransport(
         application_id=application_id,
-        session_id=session_id,
+        session_id=call_id,
         token=token,
         params=VonageVideoConnectorTransportParams(
             audio_in_enabled=audio_in_enabled,
@@ -266,7 +266,7 @@ async def run_bedrock_echo_agent() -> None:
 
     @transport.event_handler("on_joined")
     async def on_joined(transport, data):
-        print(f"✓ Connected to Vonage Video session {data['sessionId']}")
+        print(f"✓ Connected to Vonage Voice session {data['sessionId']}")
         print(f"✓ Bedrock LLM ({bedrock_model_id}) ready for participant interactions")
         maybe_dump_event_payload("on_joined", data)
 
@@ -331,7 +331,7 @@ async def run_bedrock_echo_agent() -> None:
 
     @transport.event_handler("on_left")
     async def on_left(transport, data):
-        print(f"Left Vonage Video session {data.get('sessionId', '')}".rstrip())
+        print(f"Left Vonage Voice session {data.get('sessionId', '')}".rstrip())
         maybe_dump_event_payload("on_left", data)
 
     @transport.event_handler("on_error")
@@ -340,7 +340,7 @@ async def run_bedrock_echo_agent() -> None:
         print(f"ERROR: Transport error — {error}")
         logger.exception("transport_error")
 
-    print("Pipecat transport echo running — speak into your browser microphone")
+    print("Pipecat serializer echo running — speak into your browser microphone")
     print("  Audio received → echoed back directly (no LLM — transport connectivity test)")
     print(
         f"  Transport config: log_level={video_connector_log_level}, "

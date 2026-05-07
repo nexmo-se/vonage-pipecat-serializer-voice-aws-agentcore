@@ -16,6 +16,6 @@ WORKDIR /app
 COPY requirements.txt .
 RUN uv pip install --system -r requirements.txt
 
-COPY echo_bot.py .
+COPY serializer_echo_bot.py .
 
-CMD ["python", "echo_bot.py"]
+CMD ["python", "serializer_echo_bot.py"]

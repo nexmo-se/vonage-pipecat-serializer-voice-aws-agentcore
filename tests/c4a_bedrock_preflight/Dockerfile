@@ -17,7 +17,7 @@ COPY requirements.txt .
 RUN uv pip install --system -r requirements.txt
 
 COPY test_bedrock.py .
-COPY bedrock_transport_integration.py .
+COPY bedrock_serializer_integration.py .
 COPY bedrock_echo_agent.py .
 
 # Default command: credential test (Stage 1)

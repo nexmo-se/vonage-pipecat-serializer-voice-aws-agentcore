@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-C4b Integration Test: Bedrock + Vonage Transport Validation
+C4a Integration Test: Bedrock + Vonage Transport Validation
 
 This test verifies that:
 1. AWS Bedrock credentials are accessible
@@ -23,7 +23,7 @@ repo_root = Path(__file__).resolve().parents[2]
 load_dotenv(repo_root / ".env")
 
 print("=" * 70)
-print("C4b Integration Test: Bedrock + Vonage Transport Setup Validation")
+print("C4a Integration Test: Bedrock + Vonage Transport Setup Validation")
 print("=" * 70)
 
 # ── Stage 1: Bedrock Credentials Test ─────────────────────────────
@@ -78,23 +78,23 @@ except Exception as e:
     sys.exit(1)
 
 # ── Stage 2: Vonage Configuration Check ───────────────────────────
-print("\n[Stage 2] Vonage Video Configuration")
+print("\n[Stage 2] Vonage Voice Configuration")
 print("-" * 70)
 
 vonage_app_id = os.getenv("VONAGE_APPLICATION_ID", "").strip()
-vonage_session_id = os.getenv("VONAGE_SESSION_ID", "").strip()
+vonage_call_id = os.getenv("VONAGE_CALL_ID", "").strip()
 vonage_private_key = os.getenv("VONAGE_PRIVATE_KEY", "private.key").strip()
 
 if not vonage_app_id:
     print("✗ VONAGE_APPLICATION_ID not set")
     sys.exit(1)
 
-if not vonage_session_id:
-    print("✗ VONAGE_SESSION_ID not set")
+if not vonage_call_id:
+    print("✗ VONAGE_CALL_ID not set")
     sys.exit(1)
 
 print(f"✓ VONAGE_APPLICATION_ID: {vonage_app_id[:20]}...")
-print(f"✓ VONAGE_SESSION_ID: {vonage_session_id[:30]}...")
+print(f"✓ VONAGE_CALL_ID: {vonage_call_id[:30]}...")
 
 private_key_file = Path(vonage_private_key)
 if not private_key_file.is_absolute():
@@ -136,7 +136,7 @@ print("  - Model invocation successful")
 
 print("\n✓ Stage 2 (Vonage Configuration): READY")
 print("  - VONAGE_APPLICATION_ID set")
-print("  - VONAGE_SESSION_ID set")
+print("  - VONAGE_CALL_ID set")
 print("  - Private key file exists")
 
 print("\n⚠ Stage 3 (Pipecat Transport): DEFERRED TO DOCKER")
@@ -147,20 +147,20 @@ print("\n" + "=" * 70)
 print("NEXT STEPS: Run Stage 2 with Docker")
 print("=" * 70)
 print("""
-To run the full C4b Bedrock + Vonage integration test:
+To run the full C4a Bedrock + Vonage integration test:
 
 1. Build Docker image:
-   cd tests/c4b_bedrock_nova_sonic
-   docker build -t c4b-bedrock-nova-sonic .
+   cd tests/c4a_bedrock_preflight
+   docker build -t c4a-bedrock .
 
 2. Run Bedrock echo agent in Docker:
-   docker run --rm \
-     -e AWS_PROFILE=vonage-dev \
-     -e AWS_REGION=us-east-1 \
-     -v ~/.aws:/root/.aws \
-     -v "$(pwd)/../../.env:/workspace/.env:ro" \
-     -v "$(pwd)/../../private.key:/workspace/private.key:ro" \
-     c4b-bedrock-nova-sonic python bedrock_echo_agent.py
+   docker run --rm \\
+     -e AWS_PROFILE=vonage-dev \\
+     -e AWS_REGION=us-east-1 \\
+     -v ~/.aws:/root/.aws \\
+     -v "$(pwd)/../../.env:/workspace/.env:ro" \\
+     -v "$(pwd)/../../private.key:/workspace/private.key:ro" \\
+     c4a-bedrock python bedrock_echo_agent.py
 
 3. Join Vonage Playground:
    https://tools.vonage.com/video/playground/
@@ -169,9 +169,9 @@ To run the full C4b Bedrock + Vonage integration test:
 4. Publish audio → speak → wait for LLM echo → disconnect
 
 5. Verify logs for success markers:
-    grep "Connected to Vonage Video" logs/c4b-bedrock-nova-sonic-echo.log
-    grep "Nova Sonic" logs/c4b-bedrock-nova-sonic-echo.log
-    grep "Participant joined" logs/c4b-bedrock-nova-sonic-echo.log
+   grep "Connected to Vonage Voice" logs/c4a-bedrock-echo.log
+   grep "Bedrock LLM ready" logs/c4a-bedrock-echo.log
+   grep "Participant joined" logs/c4a-bedrock-echo.log
 """)
 
-print("\nC4b Integration Test PASSED ✓\n")
+print("\nC4a Integration Test PASSED ✓\n")
