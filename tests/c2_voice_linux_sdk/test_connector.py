@@ -35,13 +35,13 @@ load_dotenv(REPO_ROOT / ".env")
 def main() -> None:
     application_id = os.getenv("VONAGE_APPLICATION_ID", "").strip()
     private_key_path = os.getenv("VONAGE_PRIVATE_KEY", "private.key").strip()
-    call_id = os.getenv("VONAGE_CALL_ID", os.getenv("VONAGE_SESSION_ID", "")).strip()
+    session_id = os.getenv("VONAGE_CALL_ID", os.getenv("VONAGE_SESSION_ID", "")).strip()
 
     # ── Validate env vars ─────────────────────────────────────────
     missing: list[str] = []
     if not application_id:
         missing.append("VONAGE_APPLICATION_ID")
-    if not call_id:
+    if not session_id:
         missing.append("VONAGE_CALL_ID")
     if missing:
         print(f"ERROR: Missing env vars: {', '.join(missing)}")
@@ -79,7 +79,7 @@ def main() -> None:
 
     token = client.video.generate_client_token(
         TokenOptions(
-            session_id=call_id,
+            session_id=session_id,
             role="publisher",
         )
     )
@@ -88,7 +88,7 @@ def main() -> None:
     print("✓ Generated publisher token")
 
     # ── Connect via Voice Linux SDK ───────────────────────────────
-    print(f"Connecting to call {call_id} as WebRTC participant …")
+    print(f"Connecting to call {session_id} as WebRTC participant …")
     connector = VonageVideoClient()
     connection_state = {"connected": False, "error": None}
 
@@ -114,7 +114,7 @@ def main() -> None:
 
     success = connector.connect(
         application_id=application_id,
-        session_id=call_id,
+        session_id=session_id,
         token=token,
         session_settings=session_settings,
         on_connected_cb=on_connected,

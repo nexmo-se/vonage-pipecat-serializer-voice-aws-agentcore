@@ -97,12 +97,12 @@ async def join(
     call_id: str | None = None,
 ) -> dict[str, str]:
     global _agent
-    payload_session = ""
+    payload_call_id = ""
     if payload:
-        payload_session = str(payload.get("call_id", payload.get("session_id", ""))).strip()
+        payload_call_id = str(payload.get("call_id", payload.get("session_id", ""))).strip()
 
     target_session = (
-        payload_session
+        payload_call_id
         or call_id
         or session_id
         or os.getenv("VONAGE_CALL_ID", os.getenv("VONAGE_SESSION_ID", ""))
