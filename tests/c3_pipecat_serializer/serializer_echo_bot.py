@@ -234,7 +234,7 @@ async def run_echo_bot() -> None:
 
     @serializer_bridge.event_handler("on_joined")
     async def on_joined(transport, data):
-        print(f"✓ Connected to Vonage Voice session {data['sessionId']}")
+        print(f"✓ Connected to Vonage Voice call {data['sessionId']}")
         maybe_dump_event_payload("on_joined", data)
 
     @serializer_bridge.event_handler("on_participant_joined")
@@ -296,7 +296,7 @@ async def run_echo_bot() -> None:
 
     @serializer_bridge.event_handler("on_left")
     async def on_left(transport, data):
-        print(f"Left Vonage Voice session {data.get('sessionId', '')}".rstrip())
+        print(f"Left Vonage Voice call {data.get('sessionId', '')}".rstrip())
         maybe_dump_event_payload("on_left", data)
 
     @serializer_bridge.event_handler("on_error")

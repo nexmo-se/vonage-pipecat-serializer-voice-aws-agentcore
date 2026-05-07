@@ -192,7 +192,7 @@ async def run_bedrock_echo_agent() -> None:
     if enable_pipecat_logger:
         logger.enable("pipecat")
 
-    print(f"Initialising Vonage Pipecat serializer for session {call_id}…")
+    print(f"Initialising Vonage Pipecat serializer for call {call_id}…")
 
     # ── Build Pipecat pipeline (same structure as C3) ─────────────
     transport = VonageVideoConnectorTransport(

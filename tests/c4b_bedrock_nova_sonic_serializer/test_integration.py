@@ -164,12 +164,12 @@ To run the full C4b Bedrock + Vonage integration test:
 
 3. Join Vonage Playground:
    https://tools.vonage.com/video/playground/
-   (Use session ID from .env)
+   (Use call ID from .env)
 
 4. Publish audio → speak → wait for LLM echo → disconnect
 
 5. Verify logs for success markers:
-    grep "Connected to Vonage Voice" logs/c4b-bedrock-nova-sonic-echo.log
+    grep "Connected to Vonage Voice call" logs/c4b-bedrock-nova-sonic-echo.log
     grep "Nova Sonic" logs/c4b-bedrock-nova-sonic-echo.log
     grep "Participant joined" logs/c4b-bedrock-nova-sonic-echo.log
 """)
