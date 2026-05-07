@@ -31,10 +31,10 @@ print("\n[Stage 1] Bedrock Credentials & LLM Test")
 print("-" * 70)
 
 try:
-    from bedrock_transport_integration import BedrockLLMIntegration
+    from bedrock_serializer_integration import BedrockLLMIntegration
     print("✓ Bedrock integration module imported")
 except ImportError as e:
-    print(f"✗ Failed to import bedrock_transport_integration: {e}")
+    print(f"✗ Failed to import bedrock_serializer_integration: {e}")
     sys.exit(1)
 
 aws_profile = os.getenv("AWS_PROFILE", "").strip()
@@ -82,19 +82,19 @@ print("\n[Stage 2] Vonage Voice Configuration")
 print("-" * 70)
 
 vonage_app_id = os.getenv("VONAGE_APPLICATION_ID", "").strip()
-vonage_call_id = os.getenv("VONAGE_CALL_ID", "").strip()
+call_id = os.getenv("VONAGE_CALL_ID", "").strip()
 vonage_private_key = os.getenv("VONAGE_PRIVATE_KEY", "private.key").strip()
 
 if not vonage_app_id:
     print("✗ VONAGE_APPLICATION_ID not set")
     sys.exit(1)
 
-if not vonage_call_id:
+if not call_id:
     print("✗ VONAGE_CALL_ID not set")
     sys.exit(1)
 
 print(f"✓ VONAGE_APPLICATION_ID: {vonage_app_id[:20]}...")
-print(f"✓ VONAGE_CALL_ID: {vonage_call_id[:30]}...")
+print(f"✓ VONAGE_CALL_ID: {call_id[:30]}...")
 
 private_key_file = Path(vonage_private_key)
 if not private_key_file.is_absolute():

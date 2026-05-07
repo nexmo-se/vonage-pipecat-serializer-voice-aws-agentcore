@@ -3,7 +3,7 @@
 Test C4a Stage 2: Vonage Transport Echo in the Bedrock-configured environment
 
 Runs a Pipecat pipeline that:
-    1. Joins the Vonage Voice session (same as C3)
+    1. Joins the Vonage Voice call (same as C3)
     2. Receives audio from browser participants
     3. Echoes audio straight back via transport (no LLM invocation)
 
@@ -159,7 +159,7 @@ async def run_bedrock_echo_agent() -> None:
 
     # ── Import Bedrock integration ────────────────────────────────
     try:
-        from bedrock_transport_integration import BedrockLLMIntegration, BedrockEchoContextManager
+        from bedrock_serializer_integration import BedrockLLMIntegration, BedrockEchoContextManager
     except ImportError as exc:
         print(f"ERROR: Bedrock integration not found — {exc}")
         sys.exit(1)
@@ -266,7 +266,7 @@ async def run_bedrock_echo_agent() -> None:
 
     @transport.event_handler("on_joined")
     async def on_joined(transport, data):
-        print(f"✓ Connected to Vonage Voice session {data['sessionId']}")
+        print(f"✓ Connected to Vonage Voice call {data['sessionId']}")
         print(f"✓ Bedrock LLM ({bedrock_model_id}) ready for participant interactions")
         maybe_dump_event_payload("on_joined", data)
 
@@ -331,7 +331,7 @@ async def run_bedrock_echo_agent() -> None:
 
     @transport.event_handler("on_left")
     async def on_left(transport, data):
-        print(f"Left Vonage Voice session {data.get('sessionId', '')}".rstrip())
+        print(f"Left Vonage Voice call {data.get('sessionId', '')}".rstrip())
         maybe_dump_event_payload("on_left", data)
 
     @transport.event_handler("on_error")

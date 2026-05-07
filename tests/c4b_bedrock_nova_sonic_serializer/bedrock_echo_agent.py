@@ -3,7 +3,7 @@
 Test C4b: AWS Bedrock + Vonage Pipecat Transport — Echo Agent
 
 Runs a Pipecat pipeline that:
-    1. Joins the Vonage Voice session (same as C3)
+    1. Joins the Vonage Voice call (same as C3)
     2. Receives audio from browser participants
     3. Invokes AWS Bedrock Nova Sonic LLM for text responses
     4. Echoes back combined response via transport
@@ -310,7 +310,7 @@ async def run_bedrock_echo_agent() -> None:
 
     @transport.event_handler("on_joined")
     async def on_joined(transport, data):
-        print(f"✓ Connected to Vonage Voice session {data['sessionId']}")
+        print(f"✓ Connected to Vonage Voice call {data['sessionId']}")
         print(f"✓ Nova Sonic ({bedrock_model_id}) ready for participant interactions")
         maybe_dump_event_payload("on_joined", data)
         await seed_initial_context("on_joined")
@@ -378,7 +378,7 @@ async def run_bedrock_echo_agent() -> None:
 
     @transport.event_handler("on_left")
     async def on_left(transport, data):
-        print(f"Left Vonage Voice session {data.get('sessionId', '')}".rstrip())
+        print(f"Left Vonage Voice call {data.get('sessionId', '')}".rstrip())
         maybe_dump_event_payload("on_left", data)
 
     @transport.event_handler("on_error")
