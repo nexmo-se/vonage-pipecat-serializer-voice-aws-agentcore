@@ -1,7 +1,7 @@
 pipecat-ai[silero,webrtc] @ git+https://github.com/Vonage/pipecat.git
 loguru>=0.7.0
 vonage>=4.8.0
-vonage-voice-linux-sdk>=1.0.0
-vonage-video-connector>=1.0.0
 python-dotenv>=1.2.2
 websockets>=15.0.0
+fastapi>=0.110.0
+uvicorn[standard]>=0.29.0

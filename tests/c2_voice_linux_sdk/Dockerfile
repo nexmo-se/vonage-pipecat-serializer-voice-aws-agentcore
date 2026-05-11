@@ -1,11 +1,8 @@
 FROM python:3.13-slim
 
-# Install system dependencies required by the Voice Linux SDK native library
+# Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libssl-dev \
-    libexpat1 \
-    libpulse0 \
-    alsa-utils \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv

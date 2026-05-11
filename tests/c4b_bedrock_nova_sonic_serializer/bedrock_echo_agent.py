@@ -47,17 +47,6 @@ async def run_bedrock_echo_agent() -> None:
             return default
         return value.strip().lower() in {"1", "true", "yes", "on"}
 
-    def env_resolution(name: str, default: tuple[int, int]) -> tuple[int, int]:
-        value = os.getenv(name, "").strip()
-        if not value:
-            return default
-        try:
-            width_str, height_str = value.lower().split("x", 1)
-            return (int(width_str), int(height_str))
-        except ValueError:
-            print(f"WARN: Invalid {name}={value!r}, using default {default[0]}x{default[1]}")
-            return default
-
     def env_int(name: str, default: int) -> int:
         value = os.getenv(name, "").strip()
         if not value:
@@ -106,35 +95,20 @@ async def run_bedrock_echo_agent() -> None:
     enable_pipecat_logger = env_bool("VONAGE_ENABLE_PIPECAT_LOGGER", True)
     enable_bedrock_debug = env_bool("VONAGE_ENABLE_BEDROCK_DEBUG", True)
 
-    manual_subscribe = env_bool("VONAGE_MANUAL_SUBSCRIBE", False)
-    manual_subscribe_video = env_bool("VONAGE_MANUAL_SUBSCRIBE_VIDEO", False)
-
+    # Audio-only pipeline configuration
     audio_in_enabled = env_bool("VONAGE_AUDIO_IN_ENABLED", True)
     audio_out_enabled = env_bool("VONAGE_AUDIO_OUT_ENABLED", True)
-    video_in_enabled = env_bool("VONAGE_VIDEO_IN_ENABLED", False)
-    video_out_enabled = env_bool("VONAGE_VIDEO_OUT_ENABLED", False)
+    video_in_enabled = False  # Audio-only (Voice API)
+    video_out_enabled = False  # Audio-only (Voice API)
 
     audio_in_sample_rate = env_int("VONAGE_AUDIO_IN_SAMPLE_RATE", 16000)
     audio_out_sample_rate = env_int("VONAGE_AUDIO_OUT_SAMPLE_RATE", 24000)
     audio_in_channels = env_int("VONAGE_AUDIO_IN_CHANNELS", 1)
     audio_out_channels = env_int("VONAGE_AUDIO_OUT_CHANNELS", 1)
 
-    video_out_width = env_int("VONAGE_VIDEO_OUT_WIDTH", 1280)
-    video_out_height = env_int("VONAGE_VIDEO_OUT_HEIGHT", 720)
-    video_out_framerate = env_int("VONAGE_VIDEO_OUT_FRAMERATE", 30)
-    video_out_color_format = os.getenv("VONAGE_VIDEO_OUT_COLOR_FORMAT", "RGB").strip() or "RGB"
-
-    publisher_enable_opus_dtx = env_bool("VONAGE_PUBLISHER_ENABLE_OPUS_DTX", False)
     publisher_name = os.getenv("VONAGE_PUBLISHER_NAME", "Bedrock Echo Agent").strip() or "Bedrock Echo Agent"
-
     audio_in_auto_subscribe = env_bool("VONAGE_AUDIO_IN_AUTO_SUBSCRIBE", True)
-    video_in_auto_subscribe = env_bool("VONAGE_VIDEO_IN_AUTO_SUBSCRIBE", False)
-    if manual_subscribe:
-        audio_in_auto_subscribe = False
-        video_in_auto_subscribe = False
-
-    preferred_resolution = env_resolution("VONAGE_VIDEO_IN_PREFERRED_RESOLUTION", (640, 480))
-    preferred_framerate = env_int("VONAGE_VIDEO_IN_PREFERRED_FRAMERATE", 15)
+    video_in_auto_subscribe = False  # Audio-only
 
     monitor_enabled = env_bool("VONAGE_MONITOR_ENABLED", True)
     monitor_interval_seconds = env_int("VONAGE_MONITOR_INTERVAL_SECONDS", 15)
@@ -154,10 +128,9 @@ async def run_bedrock_echo_agent() -> None:
         from pipecat.processors.aggregators.llm_context import LLMContext
         from pipecat.processors.aggregators.llm_response_universal import LLMContextAggregatorPair
         from pipecat.services.aws.nova_sonic.llm import AWSNovaSonicLLMService, Params
-        from pipecat.transports.vonage.video_connector import (
-            SubscribeSettings,
-            VonageVideoConnectorTransport,
-            VonageVideoConnectorTransportParams,
+        from pipecat.transports.vonage.audio_serializer import (
+            VonageAudioSerializerTransport,
+            VonageAudioSerializerTransportParams,
         )
     except ImportError as exc:
         print(f"ERROR: Missing dependency — {exc}")
@@ -223,14 +196,14 @@ async def run_bedrock_echo_agent() -> None:
     if enable_pipecat_logger:
         logger.enable("pipecat")
 
-    print(f"Initialising Vonage Pipecat serializer for call {call_id}…")
+    print(f"Initialising Vonage Audio Serializer for call {call_id}…")
 
     # ── Build Pipecat pipeline ────────────────────────────────────
-    transport = VonageVideoConnectorTransport(
+    serializer_bridge = VonageAudioSerializerTransport(
         application_id=application_id,
         session_id=call_id,
         token=token,
-        params=VonageVideoConnectorTransportParams(
+        params=VonageAudioSerializerTransportParams(
             audio_in_enabled=audio_in_enabled,
             audio_out_enabled=audio_out_enabled,
             video_in_enabled=video_in_enabled,
@@ -240,16 +213,9 @@ async def run_bedrock_echo_agent() -> None:
             audio_in_channels=audio_in_channels,
             audio_out_sample_rate=audio_out_sample_rate,
             audio_out_channels=audio_out_channels,
-            video_out_width=video_out_width,
-            video_out_height=video_out_height,
-            video_out_framerate=video_out_framerate,
-            video_out_color_format=video_out_color_format,
             vad_analyzer=SileroVADAnalyzer(),
             audio_in_auto_subscribe=audio_in_auto_subscribe,
-            video_in_auto_subscribe=video_in_auto_subscribe,
-            video_in_preferred_resolution=preferred_resolution,
-            video_in_preferred_framerate=preferred_framerate,
-            publisher_enable_opus_dtx=publisher_enable_opus_dtx,
+            video_in_auto_subscribe=False,
             session_enable_migration=session_enable_migration,
             video_connector_log_level=video_connector_log_level,
             clear_buffers_on_interruption=clear_buffers_on_interruption,
@@ -257,11 +223,11 @@ async def run_bedrock_echo_agent() -> None:
     )
 
     pipeline = Pipeline([
-        transport.input(),   # Receive participant audio from Vonage session
+        serializer_bridge.input(),   # Receive participant audio from Vonage session
         context_aggregator.user(),
         nova_sonic,          # Speech-to-speech via AWS Nova Sonic
         context_aggregator.assistant(),
-        transport.output(),  # Publish response audio back into the session
+        serializer_bridge.output(),  # Publish response audio back into the session
     ])
 
     task = PipelineTask(
@@ -308,15 +274,15 @@ async def run_bedrock_echo_agent() -> None:
 
     monitor_task = asyncio.create_task(monitor_loop()) if monitor_enabled else None
 
-    @transport.event_handler("on_joined")
-    async def on_joined(transport, data):
+    @serializer_bridge.event_handler("on_joined")
+    async def on_joined(serializer_bridge, data):
         print(f"✓ Connected to Vonage Voice call {data['sessionId']}")
         print(f"✓ Nova Sonic ({bedrock_model_id}) ready for participant interactions")
         maybe_dump_event_payload("on_joined", data)
         await seed_initial_context("on_joined")
 
-    @transport.event_handler("on_participant_joined")
-    async def on_participant_joined(transport, data):
+    @serializer_bridge.event_handler("on_participant_joined")
+    async def on_participant_joined(serializer_bridge, data):
         event_counts["participant_joined"] += 1
         stream_id = data.get("streamId", "unknown")
         if stream_id != "unknown":
@@ -330,7 +296,7 @@ async def run_bedrock_echo_agent() -> None:
                 f"(audio=True, video={manual_subscribe_video}, "
                 f"resolution={preferred_resolution[0]}x{preferred_resolution[1]}, fps={preferred_framerate})"
             )
-            await transport.subscribe_to_stream(
+            await serializer_bridge.subscribe_to_stream(
                 stream_id,
                 SubscribeSettings(
                     subscribe_to_audio=True,
@@ -340,14 +306,14 @@ async def run_bedrock_echo_agent() -> None:
                 ),
             )
 
-    @transport.event_handler("on_first_participant_joined")
-    async def on_first_participant_joined(transport, data):
+    @serializer_bridge.event_handler("on_first_participant_joined")
+    async def on_first_participant_joined(serializer_bridge, data):
         stream_id = data.get("streamId", "unknown")
         print(f"  First participant joined with stream {stream_id}")
         maybe_dump_event_payload("on_first_participant_joined", data)
 
-    @transport.event_handler("on_participant_left")
-    async def on_participant_left(transport, data):
+    @serializer_bridge.event_handler("on_participant_left")
+    async def on_participant_left(serializer_bridge, data):
         event_counts["participant_left"] += 1
         stream_id = data.get("streamId", "unknown")
         if stream_id != "unknown":
@@ -355,8 +321,8 @@ async def run_bedrock_echo_agent() -> None:
         print(f"  Participant left stream {stream_id}")
         maybe_dump_event_payload("on_participant_left", data)
 
-    @transport.event_handler("on_client_connected")
-    async def on_client_connected(transport, data):
+    @serializer_bridge.event_handler("on_client_connected")
+    async def on_client_connected(serializer_bridge, data):
         event_counts["client_connected"] += 1
         subscriber_id = data.get("subscriberId", "unknown")
         if subscriber_id != "unknown":
@@ -367,8 +333,8 @@ async def run_bedrock_echo_agent() -> None:
         maybe_dump_event_payload("on_client_connected", data)
         await seed_initial_context("on_client_connected")
 
-    @transport.event_handler("on_client_disconnected")
-    async def on_client_disconnected(transport, data):
+    @serializer_bridge.event_handler("on_client_disconnected")
+    async def on_client_disconnected(serializer_bridge, data):
         event_counts["client_disconnected"] += 1
         subscriber_id = data.get("subscriberId", "unknown")
         if subscriber_id != "unknown":
@@ -376,26 +342,23 @@ async def run_bedrock_echo_agent() -> None:
         print(f"  Client disconnected from stream {subscriber_id}")
         maybe_dump_event_payload("on_client_disconnected", data)
 
-    @transport.event_handler("on_left")
-    async def on_left(transport, data):
+    @serializer_bridge.event_handler("on_left")
+    async def on_left(serializer_bridge, data):
         print(f"Left Vonage Voice call {data.get('sessionId', '')}".rstrip())
         maybe_dump_event_payload("on_left", data)
 
-    @transport.event_handler("on_error")
-    async def on_error(transport, error):
+    @serializer_bridge.event_handler("on_error")
+    async def on_error(serializer_bridge, error):
         event_counts["errors"] += 1
-        print(f"ERROR: Transport error — {error}")
-        logger.exception("transport_error")
+        print(f"ERROR: Serializer bridge error — {error}")
+        logger.exception("serializer_bridge_error")
 
-    print("Pipecat pipeline with Nova Sonic running — speak into your browser microphone")
-    print("  Audio received → Nova Sonic processes → spoken response published back")
+    print("Pipecat Audio Serializer + Nova Sonic Agent running")
+    print("  Audio received → Nova Sonic processes → response published back")
     print(
-        f"  Transport config: log_level={video_connector_log_level}, "
-        f"audio_in={audio_in_enabled}, audio_out={audio_out_enabled}, "
-        f"video_in={video_in_enabled}, video_out={video_out_enabled}, "
-        f"session_migration={session_enable_migration}"
+        f"  Config: audio_in={audio_in_enabled}, audio_out={audio_out_enabled}, "
+        f"model={bedrock_model_id}, region={aws_region}"
     )
-    print(f"  AI config: model={bedrock_model_id}, region={aws_region}")
     print("Press Ctrl+C to stop.\n")
 
     runner = PipelineRunner()

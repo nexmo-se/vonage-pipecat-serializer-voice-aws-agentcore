@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-C4a Integration Test: Bedrock + Vonage Transport Validation
+C4a Integration Test: Bedrock + Vonage Serializer Validation
 
 This test verifies that:
 1. AWS Bedrock credentials are accessible
@@ -8,7 +8,7 @@ This test verifies that:
 3. Integration module loads successfully
 4. Stage 2 (bedrock_echo_agent.py) is ready for Docker execution
 
-Note: Full Stage 2 requires Docker/Linux for Vonage transport.
+Note: Full Stage 2 requires Docker/Linux for Vonage serializer.
 """
 
 import json
@@ -107,7 +107,7 @@ else:
     sys.exit(1)
 
 # ── Stage 3: Pipecat Dependency Check ─────────────────────────────
-print("\n[Stage 3] Pipecat Transport Dependencies")
+print("\n[Stage 3] Pipecat Serializer Dependencies")
 print("-" * 70)
 
 try:
@@ -120,7 +120,7 @@ except ImportError as e:
 
 try:
     from pipecat.transports.vonage.video_connector import VonageVideoConnectorTransport
-    print("✓ Pipecat Vonage transport available")
+    print("✓ Pipecat Vonage serializer transport available")
 except ImportError:
     print("⚠ Pipecat Vonage transport not available on this platform")
     print("  (This is expected on macOS; Stage 2 uses Docker)")
@@ -139,8 +139,8 @@ print("  - VONAGE_APPLICATION_ID set")
 print("  - VONAGE_CALL_ID set")
 print("  - Private key file exists")
 
-print("\n⚠ Stage 3 (Pipecat Transport): DEFERRED TO DOCKER")
-print("  - Vonage transport dependencies deferred to Docker/Linux environment")
+print("\n⚠ Stage 3 (Pipecat Serializer): DEFERRED TO DOCKER")
+print("  - Vonage serializer transport dependencies deferred to Docker/Linux environment")
 print("  - bedrock_echo_agent.py ready to run in Docker")
 
 print("\n" + "=" * 70)

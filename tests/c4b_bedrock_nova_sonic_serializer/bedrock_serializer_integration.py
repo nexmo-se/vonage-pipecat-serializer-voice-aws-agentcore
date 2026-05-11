@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Bedrock-Pipecat Transport Integration Module
+Bedrock-Pipecat Serializer Integration Module
 
 Provides LLM conversation capabilities via AWS Bedrock Nova Sonic
 integrated into the Pipecat serializer pipeline.

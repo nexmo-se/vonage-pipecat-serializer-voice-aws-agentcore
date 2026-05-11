@@ -1,9 +1,9 @@
 services:
   # ─────────────────────────────────────────────────────────────────
-  # C2 — Vonage Voice Linux SDK (Linux only)
-  # Run: docker compose run --rm c2-voice-linux-sdk
+  # C2 — Audio Serializer Connectivity (Linux only)
+  # Run: docker compose run --rm c2-audio-serializer
   # ─────────────────────────────────────────────────────────────────
-  c2-voice-linux-sdk:
+  c2-audio-serializer:
     build:
       context: ./tests/c2_voice_linux_sdk
       dockerfile: Dockerfile

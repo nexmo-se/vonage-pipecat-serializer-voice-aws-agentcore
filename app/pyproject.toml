@@ -5,10 +5,8 @@ description = "Real-time AI voice agent — Vonage Serializer + Voice SDK + AWS 
 requires-python = ">=3.13,<3.14"
 
 dependencies = [
-    # Vonage Voice API + Voice Linux SDK
+    # Vonage Voice API
     "vonage>=4.0.0",
-    "vonage-voice-linux-sdk>=1.0.0; sys_platform == 'linux'",
-    "vonage-video-connector>=1.0.0; sys_platform == 'linux'",
 
     # Pipecat AI framework from Vonage source (matches validated C3/C4 test setup)
     "pipecat-ai[aws,aws-nova-sonic,silero,webrtc] @ git+https://github.com/Vonage/pipecat.git",

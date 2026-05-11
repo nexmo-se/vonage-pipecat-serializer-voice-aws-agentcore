@@ -2,44 +2,71 @@
 
 ## Overview and architecture
 
-`app/` hosts the FastAPI runtime for the serializer + voice agent flow.
+`app/` hosts the FastAPI runtime for the Vonage Audio Serializer + voice agent flow.
 
-- Voice call lifecycle is controlled by `POST /join` and `POST /leave`
-- Pipecat serializer pipeline handles audio frame orchestration
-- Bedrock Nova Sonic provides voice intelligence
-- AgentCore bootstrap is optional and only used when `AGENTCORE_AGENT_ARN` is set
+This is a production-ready voice agent server that:
+
+- Accepts incoming Vonage Voice calls and establishes WebSocket connection via Vonage Audio Serializer Transport
+- Routes media through a Pipecat processing pipeline for AI-powered speech processing
+- Uses AWS Bedrock Nova Sonic as the conversational LLM (speech-to-speech)
+- Optionally bootstraps agent behavior via AWS Bedrock AgentCore
+
+### Request flow:
+
+```
+POST /join (WebSocket upgrade)
+  ↓
+Vonage Audio Serializer Transport connects
+  ↓
+Pipecat Pipeline Initialized
+  ↓
+Audio frames flow: Vonage → Serializer → Pipeline → Bedrock → Response → Serializer → Vonage
+  ↓
+POST /leave (cleanup)
+```
+
+### Components:
+
+- **`voice_serializer_bridge.py`** — Compatibility layer for Vonage Audio Serializer Transport imports
+- **`agent.py`** — VonageSerializerVoiceAgent class managing pipeline lifecycle, event handling, and graceful shutdown
+- **`main.py`** — FastAPI endpoints for `/join`, `/leave`, `/status`, `/ws` (WebSocket), and lifespan management
 
 ## Prerequisites and setup
 
-- Complete root `.env` setup
-- Valid `VONAGE_CALL_ID`
-- AWS Bedrock access (Nova Sonic model)
+1. Complete root `.env` setup (Vonage credentials, AWS credentials)
+2. Valid `VONAGE_CALL_ID` (from test C1 or manual session creation)
+3. AWS Bedrock access with Nova Sonic model enabled
+4. Python 3.13+ or Docker
 
 ```bash
 cd app
-python -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
 ## Environment variables
 
-Uses root `.env` values, especially:
+Uses root `.env` values:
 
-- `VONAGE_APPLICATION_ID`
-- `VONAGE_PRIVATE_KEY`
-- `VONAGE_CALL_ID`
-- `AWS_REGION`
-- `BEDROCK_MODEL_ID`
-- `AGENTCORE_AGENT_ARN` (optional)
+- `VONAGE_APPLICATION_ID` — Your Vonage app ID
+- `VONAGE_PRIVATE_KEY` — Path to private key or key content
+- `VONAGE_CALL_ID` — Voice session ID to join
+- `AWS_REGION` — AWS region for Bedrock (e.g., `us-east-1`)
+- `BEDROCK_MODEL_ID` — Bedrock model ARN (e.g., Nova Sonic)
+- `AGENTCORE_AGENT_ARN` — Optional; enables AgentCore bootstrap
+- `PORT` — Server port (default: 8000)
 
 ## Run instructions
 
+### Native
+
 ```bash
+cd app
 uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
-Docker:
+### Docker
 
 ```bash
 cd ..

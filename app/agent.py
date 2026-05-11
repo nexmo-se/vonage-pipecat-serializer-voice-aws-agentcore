@@ -1,5 +1,18 @@
 #!/usr/bin/env python3
-"""Application agent runtime built from the validated C4 serializer pipeline."""
+"""Application agent runtime using Vonage Audio Serializer + AWS Bedrock Nova Sonic.
+
+This module implements a speech-to-speech AI voice agent that connects Vonage Voice API
+to a Pipecat processing pipeline via the Vonage Audio Serializer Transport. The pipeline
+processes audio through AWS Bedrock's Nova Sonic model for real-time conversational AI.
+
+Architecture:
+  Vonage Voice Call → Audio Serializer (WebSocket) → Pipecat Pipeline →
+    AWS Bedrock Nova Sonic → Response Audio → Back to Vonage Call
+
+Reference:
+  - Vonage Pipecat Serializer: https://developer.vonage.com/en/video/guides/vonage-pipecat-serializer-overview
+  - Pipecat Framework: https://docs.pipecat.ai/
+"""
 
 from __future__ import annotations
 
@@ -20,7 +33,12 @@ logger = structlog.get_logger(__name__)
 
 
 class VonageSerializerVoiceAgent:
-    """Manages the Pipecat serializer + voice pipeline for one call."""
+    """Manages the Vonage Audio Serializer + Pipecat voice pipeline for one call.
+    
+    This class orchestrates the lifecycle of an audio call connected via Vonage's
+    WebSocket Audio Serializer. It handles connection events, media streaming,
+    and ensures graceful cleanup when calls end.
+    """
 
     def __init__(
         self,
