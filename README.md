@@ -40,10 +40,10 @@ Audio response streams back to caller
 
 ## Prerequisites and setup
 
-- Python 3.13+
-- Vonage application credentials and `private.key`
-- AWS credentials with Bedrock (and AgentCore if enabled)
-- Docker (recommended for consistent environment)
+- Docker
+- AWS credentials with Bedrock access (and AgentCore if enabled)
+- ngrok account with reserved domain (recommended for stable Vonage webhook URL)
+- Vonage Voice application configured with a public Answer URL
 
 Setup:
 
@@ -54,35 +54,48 @@ cp .env.example .env
 
 ## Environment variables
 
-Primary variables:
+Primary variables for the main app (`app/`):
 
-- `VONAGE_APPLICATION_ID`
-- `VONAGE_PRIVATE_KEY`
-- `VONAGE_CALL_ID`
 - `AWS_PROFILE` / `AWS_REGION`
 - `BEDROCK_MODEL_ID`
 - `AGENTCORE_AGENT_ARN` (optional)
 - `PORT`
 
+Note: The production `app/` webhook flow does not require `VONAGE_CALL_ID` or Vonage Video SDK credentials. Vonage calls `/answer`, receives NCCO, then connects media to `/ws`.
+
 ## Run instructions
 
-### App (Docker)
+### App (Docker - recommended)
 
 ```bash
+# run from repository root
 docker compose --profile app up --build app
 ```
 
-### App (native)
+The app is intended to run in Docker for an isolated, reproducible runtime independent from test folders.
+
+### Expose app with ngrok
 
 ```bash
-cd app
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-uvicorn main:app --host 0.0.0.0 --port 8000
+ngrok http --domain=kittphi.ngrok.app 8000
 ```
 
+Set Vonage Answer URL to:
+
+```text
+https://kittphi.ngrok.app/answer
+```
+
+Expected flow:
+
+1. Vonage requests `/answer`
+2. App returns NCCO with `wss://kittphi.ngrok.app/ws`
+3. Vonage streams call audio over WebSocket to `/ws`
+
 ## Test instructions
+
+The `tests/` folders are proof-of-components layers used during development.
+They are not required to run the production `app/` service.
 
 Run staged tests in order to validate each layer of the architecture:
 
@@ -127,11 +140,11 @@ curl http://localhost:8000/
 curl http://localhost:8000/status
 ```
 
-Join/leave API:
+NCCO + call control API:
 
 ```bash
-curl -X POST http://localhost:8000/join -H "Content-Type: application/json" -d '{"call_id":"'$VONAGE_CALL_ID'"}'
-curl -X POST http://localhost:8000/leave
+curl -H "Host: kittphi.ngrok.app" https://kittphi.ngrok.app/answer
+curl -X POST http://localhost:8000/hangup
 ```
 
 ## Production notes
