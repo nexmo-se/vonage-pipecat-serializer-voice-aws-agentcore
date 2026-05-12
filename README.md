@@ -1,30 +1,42 @@
 # vonage-pipecat-serializer-voice-aws-agentcore
 
-Real-time voice agent using **Vonage Audio Serializer for Pipecat** with **AWS Bedrock Nova Sonic** and optional **AWS AgentCore bootstrap**.
+Reference implementation of a **production-ready voice AI agent** combining:
 
-## Overview and architecture
+- **Vonage Audio Serializer for Pipecat** — WebSocket transport for real-time phone call audio
+- **AWS Bedrock Nova Sonic** — Speech-to-speech conversational AI (no transcription needed)
+- **AWS Bedrock AgentCore** — Agent runtime for tool use, knowledge bases, and real-world actions
 
-This application implements a speech-to-speech AI voice agent that connects Vonage Voice API calls to a Pipecat processing pipeline via the **Vonage Audio Serializer** — a WebSocket-based transport optimized for audio-only Pipecat pipelines per [official Vonage guidance](https://developer.vonage.com/en/video/guides/vonage-pipecat-serializer-overview).
+> **The showcase:** This repo demonstrates how to connect a live Vonage phone call all the way through to an AWS-hosted AI agent that can converse in real time _and_ take actions — using the Vonage Pipecat Serializer as the bridge.
 
-Runtime path:
+## Why This Stack?
+
+| Layer                       | What it solves                                                                                           |
+| --------------------------- | -------------------------------------------------------------------------------------------------------- |
+| **Vonage Audio Serializer** | Bridges phone call audio (WebSocket PCM) into a Pipecat pipeline without WebRTC complexity               |
+| **Nova Sonic**              | Eliminates the STT → LLM → TTS chain — processes voice end-to-end with sub-second latency                |
+| **AgentCore**               | Gives the voice agent real-world capabilities: call a weather API, query a knowledge base, look up a CRM |
+
+Without AgentCore, you get a smart conversational assistant limited to its training data. With AgentCore, you get an agent that can **do things** — answer questions from your own docs, book appointments, check order status — all over a live phone call.
+
+## Architecture
 
 ```text
-Vonage Voice Call (Media)
-  ↓ WebSocket Audio Stream
-Vonage Audio Serializer Transport
+Caller dials Vonage number
   ↓
-Pipecat Processing Pipeline
+Vonage Voice API
+  ↓ WebSocket (PCM 16-bit, 16kHz)
+Vonage Audio Serializer Transport  ←── Pipecat's WebSocket bridge for phone audio
   ↓
-AWS Bedrock Nova Sonic (Speech-to-Speech LLM)
+Pipecat Pipeline
   ↓
-Pipecat Output Serialization
-  ↓ WebSocket Audio Response
-Vonage Voice Call (Media)
+AWS Bedrock Nova Sonic             ←── Speech-to-speech LLM (voice in, voice out)
+  ↓ (when tools/knowledge needed)
+AWS Bedrock AgentCore              ←── Agent runtime: tools, RAG, external APIs
+  ↓
+Audio response streams back to caller
 ```
 
-**Audio-only architecture:** This application uses the Vonage Audio Serializer Transport (WebSocket-based), not the Video Connector Transport (WebRTC-based). This is the recommended approach for audio-only speech AI applications.
-
-AgentCore remains an optional bootstrap layer used at startup to prime assistant behavior.
+**Audio-only design:** Uses the Vonage Audio Serializer (WebSocket), not the Video Connector (WebRTC). This is the recommended approach for voice-only AI per [official Vonage guidance](https://developer.vonage.com/en/video/guides/vonage-pipecat-serializer-overview).
 
 ## Prerequisites and setup
 
@@ -102,9 +114,9 @@ Run staged tests in order to validate each layer of the architecture:
    - Tests LLM context management and response generation
 
 6. **C5 — AgentCore Runtime** (`tests/c5_agentcore_runtime`)
-   - Tests optional AWS Bedrock AgentCore bootstrap
-   - Validates agent runtime invocation
-   - Requires valid AgentCore ARN and deployment
+   - Validates AgentCore runtime invocation from the voice pipeline
+   - Confirms the agent can call tools and return structured responses
+   - Required for production agents that need real-world actions or private knowledge
 
 Each test includes detailed run instructions, expected output, and troubleshooting in its folder's README. Start with C1 and proceed sequentially.
 
