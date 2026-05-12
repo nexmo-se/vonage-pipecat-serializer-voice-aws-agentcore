@@ -2,172 +2,130 @@
 
 Full integration test: Vonage Audio Serializer Transport + Pipecat + AWS Bedrock Nova Sonic speech-to-speech processing.
 
-> **Architecture:** Incoming voice from Vonage Voice API → Audio Serializer Transport → Pipecat pipeline → AWS Bedrock Nova Sonic LLM → Response audio → Back to Vonage call
+> Architecture: Incoming phone call -> Vonage Voice API -> NCCO WebSocket connect -> this agent (FastAPI/Pipecat) -> AWS Bedrock Nova Sonic LLM -> audio response back to caller
 
 ## Prerequisites
 
-1. **✅ C4a PASSED** — AWS Bedrock credentials and Nova Lite validation confirmed
-2. **✅ C1 Call Active** — `VONAGE_CALL_ID` in `.env` (from C1 test, valid for ~1 hour)
-3. **Python 3.14+** with venv support
-4. **AWS Bedrock Nova Sonic Model** — `amazon.nova-2-sonic-v1:0` enabled on your account
-5. **Network**: Vonage Voice API connectivity + AWS Bedrock API access
+1. C4a passed (AWS credentials + model validation)
+2. Python 3.14+ with shared venv at `tests/c2_voice_linux_sdk/venv`
+3. AWS Bedrock model access enabled for `amazon.nova-2-sonic-v1:0` in `us-east-1`
+4. ngrok installed
+5. Vonage application has a voice-enabled number linked
 
 ## Quick Start
 
-### 1. Validation Tests
-
-Verify C4b setup before running live agent:
+### Step 1: Activate shared venv and install missing packages
 
 ```bash
 cd tests/c4b_bedrock_nova_sonic_serializer
-python3 -m venv venv
-source venv/bin/activate  # On Windows: venv\\Scripts\\activate
+source ../c2_voice_linux_sdk/venv/bin/activate
+pip install aws-sdk-bedrock-runtime aioboto3
+```
 
-# Install dependencies (skip Pipecat, install only what's needed)
-pip install 'boto3>=1.34.0' 'loguru>=0.7.0' 'python-dotenv>=1.2.2' \
-  'vonage>=4.8.0' 'websockets>=15.0.0' 'fastapi>=0.110.0' 'uvicorn[standard]>=0.29.0'
+### Step 2: Run validation tests (no live phone call needed)
 
-# Run Bedrock Nova Sonic validation
+```bash
 python test_bedrock.py
-
-# Test Bedrock + Audio Serializer integration
 python test_integration.py
 ```
 
-### 2. Live Speech-to-Speech Agent
+### Step 3: Free port before starting live agent
 
-Once tests pass, start the live agent:
+If you see this error:
+
+```text
+ERROR: [Errno 48] error while attempting to bind on address ('0.0.0.0', 8001): address already in use
+```
+
+Clear the port first:
 
 ```bash
-# With AWS profile
-AWS_PROFILE=vonage-dev python bedrock_echo_agent.py
+# Find process using 8001
+lsof -iTCP:8001 -sTCP:LISTEN -n -P
 
-# Or with explicit credentials
-export AWS_ACCESS_KEY_ID=your-key
-export AWS_SECRET_ACCESS_KEY=your-secret
-python bedrock_echo_agent.py
+# Kill it (replace <PID>)
+kill <PID>
+
+# One-liner alternative
+lsof -ti tcp:8001 | xargs kill -9 2>/dev/null || true
 ```
 
-### 3. Docker Deployment (Recommended)
+### Step 4: Start live agent
 
 ```bash
-cd /path/to/repo
-AWS_PROFILE=vonage-dev docker compose run --rm c4b-bedrock-nova-sonic-serializer
+WS_PORT=8001 AWS_PROFILE=vonage-dev python bedrock_echo_agent.py
 ```
 
-## Expected Output
+Expected startup output:
 
-### Validation Tests Pass
+```text
+✓ AWS credentials resolved (profile: vonage-dev, region: us-east-1)
+
+Bedrock Nova Sonic + Vonage Audio Serializer Agent
+  Model:     amazon.nova-2-sonic-v1:0
+  Region:    us-east-1
+  Listening: ws://0.0.0.0:8001/ws
+```
+
+### Step 5: Expose with ngrok (second terminal)
 
 ```bash
-# test_bedrock.py
-✓ Using AWS profile: vonage-dev (region: us-east-1)
-✓ Bedrock client initialised
-✓ Model access verified: amazon.nova-2-sonic-v1:0
-
-Sending test prompt: "Hello, I am testing speech-to-speech."
-✓ Response received:
-  Hello! I'm ready to help. What would you like to test?
-
-Test C4b PASSED ✓
-
-# test_integration.py
-✓ Bedrock + Audio Serializer integration verified
-✓ Pipeline initialization successful
-✓ Frame processing verified
-Integration test PASSED ✓
+ngrok http --domain=kittphi.ngrok.app 8001
 ```
 
-### Live Agent Startup
+If you do not have a reserved domain:
 
 ```bash
-2026-05-11 14:32:15.890 | INFO | pipecat:<module>:14 - ᓚᘏᗢ Pipecat 0.0.104.post2.dev1
-
-Bedrock Nova Sonic + Audio Serializer Speech-to-Speech Agent
-  Call ID: <VONAGE_CALL_ID>
-  Model: amazon.nova-2-sonic-v1:0 (speech-to-speech)
-  Transport: Vonage Audio Serializer (WebSocket)
-  Listening on ws://0.0.0.0:8000/ws
-
-✓ Agent initialized and ready
-✓ Joined Vonage call successfully
-✓ Listening for incoming audio...
-
-Press Ctrl+C to disconnect and exit
+ngrok http 8001
 ```
 
-### During Live Conversation
+### Step 6: Configure Vonage app URLs
 
-```
-[14:32:30] Received audio frame (PCM 16kHz, 320 bytes)
-[14:32:31] Processing audio through pipeline...
-[14:32:32] Bedrock inference complete
-[14:32:32] Sending response audio to caller...
-[14:32:35] Received audio frame (PCM 16kHz, 320 bytes)
-...
-```
+In Vonage Dashboard -> Applications -> your app -> Edit:
 
-## Architecture: Speech-to-Speech Pipeline
+1. Answer URL (GET): `https://kittphi.ngrok.app/answer`
+2. Event URL: `https://kittphi.ngrok.app/`
 
-```
-Vonage Voice API (inbound call)
-           ↓
-    WebSocket (NCCO connect)
-           ↓
-    Audio Serializer Transport
-    (receives PCM 16-bit, 16kHz)
-           ↓
-    Pipecat Pipeline
-           ↓
-    AWS Bedrock Nova Sonic
-    (speech-to-speech LLM)
-           ↓
-    Speech Output Serializer
-           ↓
-    Audio Serializer Transport
-    (sends PCM audio back)
-           ↓
-    Vonage → Caller (audio response)
+Important: You do not configure `/ws` in the dashboard directly. The `/answer` endpoint returns NCCO that points Vonage to `wss://.../ws`.
+
+### Step 7: Verify routing before calling
+
+```bash
+curl -s https://kittphi.ngrok.app/answer
 ```
 
-## Processing Stages
+Expected response includes:
 
-| Stage             | Component               | Function                                                          |
-| ----------------- | ----------------------- | ----------------------------------------------------------------- |
-| **Audio Receive** | Vonage Audio Serializer | Accepts incoming audio frames from Voice API                      |
-| **Pipeline**      | Pipecat Runner          | Orchestrates frame processing                                     |
-| **LLM**           | AWS Bedrock Nova Sonic  | Converts speech→text, generates response, converts back to speech |
-| **Audio Send**    | Vonage Audio Serializer | Serializes response audio and sends to caller                     |
-| **Context**       | LLM Message Buffer      | Maintains conversation history for multi-turn dialogue            |
+- `"action":"connect"`
+- `"uri":"wss://kittphi.ngrok.app/ws"` (or your current ngrok host)
 
-## Test findings
+If you get `{"detail":"Not Found"}`, your running process is stale. Restart the agent from this folder and try again.
 
-- ✅ Vonage Audio Serializer Transport integration with Pipecat
-- ✅ AWS Bedrock Nova Sonic invocation and response handling
-- ✅ Audio serialization/deserialization with correct format conversion
-- ✅ Real-time speech-to-speech processing latency
-- ✅ LLM context and conversation history management
-- ✅ Error handling and graceful shutdown
+### Step 8: Place a call
+
+Call the voice-enabled Vonage number linked to this app (Dashboard -> Numbers -> Your numbers).
+
+When connected, agent logs should show:
+
+```text
+Answer webhook called -> routing call to wss://.../ws
+✓ Vonage connected: ...
+✓ Listening for audio (Nova Sonic ready)...
+```
 
 ## Troubleshooting
 
-| Issue                                       | Root Cause                                 | Solution                                                                             |
-| ------------------------------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------ |
-| `Bedrock access denied`                     | Missing IAM permissions or wrong region    | Re-run C4a test; verify `bedrock:InvokeModel` permission                             |
-| `Model not found: amazon.nova-2-sonic-v1:0` | Model unavailable in region                | Ensure Nova Sonic is available in `us-east-1` on your account                        |
-| `VONAGE_CALL_ID missing`                    | C1 test not run or expired                 | Re-run C1 test: `cd tests/c1_voice_call_bootstrap && python test_voice_bootstrap.py` |
-| `Connection refused on port 8000`           | Port already in use                        | Use different port: `WS_PORT=8001 python bedrock_echo_agent.py`                      |
-| `No audio being received`                   | Call not active or WebSocket not connected | Verify call is active; check that NCCO is routing to correct WebSocket endpoint      |
-| `Import errors (onnxruntime, pipecat)`      | Dependency conflict                        | Install only required packages (skip Pipecat full install)                           |
-| `Script hangs on initialization`            | Network timeout or authentication delay    | Check AWS connectivity; allow 10-30s for pipeline startup                            |
-| `Ctrl+C doesn't exit cleanly`               | Signal handling issue                      | Use `Ctrl+C` multiple times or kill terminal session                                 |
+| Issue | Root Cause | Fix |
+|---|---|---|
+| `address already in use` | Previous process still bound to port | Run port-clear commands in Step 3 |
+| `{"detail":"Not Found"}` at `/answer` | Old server process without `/answer` route | Kill old PID on 8001 and restart `bedrock_echo_agent.py` |
+| `No module named 'aws_sdk_bedrock_runtime'` | Missing package | `pip install aws-sdk-bedrock-runtime aioboto3` |
+| Bedrock access denied | IAM/region mismatch | Confirm profile and `us-east-1` model access |
+| No audio after call connects | ngrok host mismatch or stale dashboard URL | Re-copy ngrok URL and update Answer URL |
 
 ## Next Steps
 
-Once C4b **PASSES**:
+After C4b passes:
 
-- ✅ Speech-to-speech pipeline validated
-- ✅ Audio streaming working end-to-end
-- ✅ Nova Sonic inference operational
-- **→ Proceed to C5:** AgentCore runtime integration (optional)
-- **→ Or go to app/:** Full production deployment
+- Proceed to C5 (optional AgentCore runtime validation)
+- Or continue to full app deployment in `app/`
