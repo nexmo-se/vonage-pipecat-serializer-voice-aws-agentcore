@@ -24,11 +24,22 @@ import asyncio
 import inspect
 import json
 import os
+import time
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 import structlog
 from dotenv import load_dotenv
+
+from observability import (
+    record_agentcore_latency,
+    record_call_duration,
+    record_error,
+    record_frame_processed,
+    record_pipeline_error,
+    trace_span,
+    validate_agentcore_response,
+)
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
@@ -52,6 +63,7 @@ class VonageSerializerVoiceAgent:
         self.last_error: str | None = None
         self.on_event = on_event
         self.event_counts: dict[str, int] = {"connected": 0, "disconnected": 0, "errors": 0}
+        self._call_start_time: float | None = None
 
     async def _emit(self, event: dict[str, Any]) -> None:
         if self.on_event is None:
@@ -81,6 +93,9 @@ class VonageSerializerVoiceAgent:
         This method blocks until the call ends (Vonage disconnects or pipeline
         is cancelled). Intended to be called directly from the FastAPI /ws endpoint.
         """
+        # Record call start time for duration metrics
+        self._call_start_time = time.time()
+        
         def env_bool(name: str, default: bool) -> bool:
             value = os.getenv(name)
             if value is None:
@@ -210,6 +225,7 @@ class VonageSerializerVoiceAgent:
                 return None
 
             def _invoke() -> str | None:
+                start_time = time.time()
                 response = agentcore_client.invoke_agent_runtime(
                     agentRuntimeArn=agentcore_runtime_arn,
                     contentType="application/json",
@@ -221,12 +237,31 @@ class VonageSerializerVoiceAgent:
                     body = body.read()
                 if isinstance(body, bytes):
                     body = body.decode("utf-8", errors="replace")
-                return (body or "").strip() or None
+                
+                # Record latency
+                latency_ms = (time.time() - start_time) * 1000
+                record_agentcore_latency(latency_ms)
+                
+                result = (body or "").strip() or None
+                
+                # Validate response
+                if result:
+                    is_valid, error_reason = validate_agentcore_response(result)
+                    if not is_valid:
+                        logger.warning(
+                            "AgentCore response validation failed",
+                            reason=error_reason,
+                            response_preview=result[:100]
+                        )
+                        return None
+                
+                return result
 
             try:
                 return await asyncio.to_thread(_invoke)
             except Exception as exc:
                 logger.warning("AgentCore bootstrap invocation failed; continuing without it", error=str(exc))
+                record_error("agentcore_bootstrap_failed")
                 await self._emit({"event": "agentcore_bootstrap_failed", "error": str(exc)})
                 return None
 
@@ -401,15 +436,29 @@ class VonageSerializerVoiceAgent:
         })
 
         runner = PipelineRunner()
+        call_status = "completed"
         try:
             await runner.run(self._pipeline_task)
         except asyncio.CancelledError:
+            call_status = "cancelled"
             raise
         except Exception as exc:
             self.last_error = str(exc)
+            call_status = "failed"
             logger.exception("Pipeline execution failed")
             await self._emit({"event": "agent_error", "error": self.last_error})
         finally:
+            # Record call duration metrics
+            if self._call_start_time is not None:
+                duration_seconds = time.time() - self._call_start_time
+                record_call_duration(duration_seconds, status=call_status)
+                logger.info(
+                    "Call completed",
+                    duration_seconds=round(duration_seconds, 1),
+                    status=call_status,
+                    error=self.last_error,
+                )
+            
             if monitor_task and not monitor_task.done():
                 monitor_task.cancel()
                 try:

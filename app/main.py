@@ -11,6 +11,7 @@ Exposes:
   WS   /ws         — Vonage audio WebSocket (one connection per inbound call)
   POST /hangup     — Cancel the active call pipeline
   WS   /events     — Real-time event stream for monitoring (JSON)
+  GET  /metrics    — Prometheus metrics export
 
 Usage:
   uvicorn main:app --host 0.0.0.0 --port 8000
@@ -31,13 +32,18 @@ import structlog
 import uvicorn
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
+from prometheus_client import generate_latest, REGISTRY
 
 from agent import VonageSerializerVoiceAgent
+from observability import init_observability
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 logger = structlog.get_logger(__name__)
+
+# Initialize observability (OpenTelemetry + Prometheus)
+init_observability()
 
 # Active agent instance (one call at a time)
 _agent: VonageSerializerVoiceAgent | None = None
@@ -66,6 +72,12 @@ app = FastAPI(
 
 
 # ── Routes ────────────────────────────────────────────────────────
+
+@app.get("/metrics", response_class=Response)
+async def metrics() -> Response:
+    """Prometheus metrics export — for monitoring and observability."""
+    return Response(generate_latest(REGISTRY), media_type="text/plain; version=0.0.4")
+
 
 @app.get("/", response_class=JSONResponse)
 async def health() -> dict[str, str]:
