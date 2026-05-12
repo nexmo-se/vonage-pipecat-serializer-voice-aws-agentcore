@@ -89,6 +89,7 @@ Test C5 PASSED ✓
 ```
 
 **If you see `ERROR: Missing AGENTCORE_AGENT_ARN`:**
+
 - Set the ARN in `.env` before running
 - Restart terminal to reload `.env`
 
@@ -96,13 +97,13 @@ Test C5 PASSED ✓
 
 ## What C5 Validates
 
-| Component | Check | Result |
-|-----------|-------|--------|
-| AWS Credentials | Can access `bedrock-agentcore` service | ✓ Verified |
-| IAM Permissions | `bedrock-agent-runtime:InvokeAgent` allowed | ✓ Verified |
-| Runtime Accessibility | Runtime ARN is valid and deployed | ✓ Verified |
-| Agent Invocation | Can send request and parse response | ✓ Verified |
-| Integration Ready | Pathway for voice agent → AgentCore works | ✓ Verified |
+| Component             | Check                                       | Result     |
+| --------------------- | ------------------------------------------- | ---------- |
+| AWS Credentials       | Can access `bedrock-agentcore` service      | ✓ Verified |
+| IAM Permissions       | `bedrock-agent-runtime:InvokeAgent` allowed | ✓ Verified |
+| Runtime Accessibility | Runtime ARN is valid and deployed           | ✓ Verified |
+| Agent Invocation      | Can send request and parse response         | ✓ Verified |
+| Integration Ready     | Pathway for voice agent → AgentCore works   | ✓ Verified |
 
 ---
 
@@ -147,35 +148,35 @@ Once integrated, test with live Vonage call to hear AgentCore response.
 
 ### Configuration Issues
 
-| Symptom | Root Cause | Solution |
-|---------|-----------|----------|
-| `ERROR: Missing AGENTCORE_AGENT_ARN` | ARN not set in `.env` | Set `AGENTCORE_AGENT_ARN=arn:aws:bedrock-agentcore:...` and reload terminal |
-| `Invalid ARN format` | Malformed ARN | Verify format: `arn:aws:bedrock-agentcore:us-east-1:<ACCOUNT>:runtime/<NAME>-<ID>` |
-| `.env file not found` | Running from wrong directory | `cd /path/to/repo/root` before running |
+| Symptom                              | Root Cause                   | Solution                                                                           |
+| ------------------------------------ | ---------------------------- | ---------------------------------------------------------------------------------- |
+| `ERROR: Missing AGENTCORE_AGENT_ARN` | ARN not set in `.env`        | Set `AGENTCORE_AGENT_ARN=arn:aws:bedrock-agentcore:...` and reload terminal        |
+| `Invalid ARN format`                 | Malformed ARN                | Verify format: `arn:aws:bedrock-agentcore:us-east-1:<ACCOUNT>:runtime/<NAME>-<ID>` |
+| `.env file not found`                | Running from wrong directory | `cd /path/to/repo/root` before running                                             |
 
 ### AWS Credentials Issues
 
-| Symptom | Root Cause | Solution |
-|---------|-----------|----------|
-| `NoCredentialsError` | No AWS credentials configured | Run `aws configure --profile vonage-dev` or set `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` |
-| `AccessDenied` when invoking agent | Missing `bedrock-agent-runtime:InvokeAgent` IAM permission | Contact AWS admin to add permission to IAM role |
-| `ProfileNotFound` | Profile name doesn't exist | Verify profile: `aws configure list --profile vonage-dev` |
+| Symptom                            | Root Cause                                                 | Solution                                                                                    |
+| ---------------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `NoCredentialsError`               | No AWS credentials configured                              | Run `aws configure --profile vonage-dev` or set `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` |
+| `AccessDenied` when invoking agent | Missing `bedrock-agent-runtime:InvokeAgent` IAM permission | Contact AWS admin to add permission to IAM role                                             |
+| `ProfileNotFound`                  | Profile name doesn't exist                                 | Verify profile: `aws configure list --profile vonage-dev`                                   |
 
 ### AgentCore Runtime Issues
 
-| Symptom | Root Cause | Solution |
-|---------|-----------|----------|
-| `ResourceNotFound` or 404 | Runtime ARN invalid or runtime deleted | Verify ARN with: `aws bedrock-agentcore list-agents --region us-east-1` |
-| `ValidationException` | Payload format incorrect | Check agent expects JSON with `{"input": "..."}` structure |
-| `ServiceUnavailable` | AgentCore service temporarily down | Wait 30 seconds, retry test |
-| Response is empty or `null` | Agent returned no output | Check agent implementation handles input correctly |
+| Symptom                     | Root Cause                             | Solution                                                                |
+| --------------------------- | -------------------------------------- | ----------------------------------------------------------------------- |
+| `ResourceNotFound` or 404   | Runtime ARN invalid or runtime deleted | Verify ARN with: `aws bedrock-agentcore list-agents --region us-east-1` |
+| `ValidationException`       | Payload format incorrect               | Check agent expects JSON with `{"input": "..."}` structure              |
+| `ServiceUnavailable`        | AgentCore service temporarily down     | Wait 30 seconds, retry test                                             |
+| Response is empty or `null` | Agent returned no output               | Check agent implementation handles input correctly                      |
 
 ### Dependency Issues
 
-| Symptom | Root Cause | Solution |
-|---------|-----------|----------|
-| `ModuleNotFoundError: boto3` | Dependency not installed | Run: `pip install -r requirements.txt` |
-| `ModuleNotFoundError: bedrock-agentcore` | Package name mismatch | Run: `pip install bedrock-agentcore aioboto3` |
+| Symptom                                  | Root Cause               | Solution                                      |
+| ---------------------------------------- | ------------------------ | --------------------------------------------- |
+| `ModuleNotFoundError: boto3`             | Dependency not installed | Run: `pip install -r requirements.txt`        |
+| `ModuleNotFoundError: bedrock-agentcore` | Package name mismatch    | Run: `pip install bedrock-agentcore aioboto3` |
 
 ---
 
