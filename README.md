@@ -20,6 +20,8 @@ Without AgentCore, you get a smart conversational assistant limited to its train
 
 ## Architecture
 
+![Architecture Overview](./images/architecture-overview-seriealizer.png)
+
 ```text
 Caller dials Vonage number
   ↓

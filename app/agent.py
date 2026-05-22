@@ -267,8 +267,15 @@ class VonageSerializerVoiceAgent:
 
         bootstrap_message = await invoke_agentcore_bootstrap(agentcore_bootstrap_prompt)
 
-        # Build context: optional AgentCore bootstrap response primes the LLM context
-        context_messages: list[dict] = []
+        # Workaround for current Nova Sonic adapter behavior:
+        # if initial context messages are empty, the adapter can fail while
+        # building ConvertedMessages. Seed with system instruction.
+        context_messages: list[dict] = [
+            {
+                "role": "system",
+                "content": system_instruction,
+            }
+        ]
         if bootstrap_message:
             context_messages.append(
                 {

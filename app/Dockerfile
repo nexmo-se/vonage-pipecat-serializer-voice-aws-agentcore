@@ -20,7 +20,7 @@ COPY requirements.txt ./
 RUN uv pip install --system -r requirements.txt
 
 # Copy application source
-COPY main.py agent.py voice_serializer_bridge.py ./
+COPY main.py agent.py voice_serializer_bridge.py observability.py ./
 
 EXPOSE 8000
 
