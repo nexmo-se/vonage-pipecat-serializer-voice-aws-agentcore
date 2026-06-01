@@ -117,7 +117,7 @@ class VonageSerializerVoiceAgent:
             from botocore.config import Config
             from botocore.exceptions import ClientError
             from pipecat.audio.vad.silero import SileroVADAnalyzer
-            from pipecat.frames.frames import LLMContextFrame
+            from pipecat.frames.frames import LLMContextFrame, LLMRunFrame
             from pipecat.pipeline.pipeline import Pipeline
             from pipecat.pipeline.runner import PipelineRunner
             from pipecat.pipeline.task import PipelineParams, PipelineTask
@@ -149,6 +149,7 @@ class VonageSerializerVoiceAgent:
             "AGENTCORE_BOOTSTRAP_PROMPT",
             "Provide one short greeting plus one helpful follow-up question for a live voice assistant session.",
         ).strip()
+        bedrock_initial_user_message = os.getenv("BEDROCK_INITIAL_USER_MESSAGE", "").strip()
 
         bedrock_connect_timeout_seconds = env_int("BEDROCK_CONNECT_TIMEOUT_SECONDS", 10)
         bedrock_read_timeout_seconds = env_int("BEDROCK_READ_TIMEOUT_SECONDS", 60)
@@ -286,6 +287,16 @@ class VonageSerializerVoiceAgent:
                     ),
                 }
             )
+        if bedrock_initial_user_message:
+            context_messages.append(
+                {
+                    "role": "user",
+                    "content": (
+                        "When the caller connects, start by saying exactly this greeting: "
+                        f"{bedrock_initial_user_message}"
+                    ),
+                }
+            )
         context = LLMContext(messages=context_messages)
 
         try:
@@ -418,6 +429,11 @@ class VonageSerializerVoiceAgent:
             logger.info("Vonage WebSocket connected", model=bedrock_model_id)
             await self._emit({"event": "call_connected", "model": bedrock_model_id})
             await self._pipeline_task.queue_frame(LLMContextFrame(context))
+            # If an initial assistant message is configured, force the first run so callers
+            # hear the greeting immediately after connect.
+            if bedrock_initial_user_message:
+                await self._pipeline_task.queue_frame(LLMRunFrame())
+                logger.info("Queued initial assistant greeting")
 
         @transport.event_handler("on_client_disconnected")
         async def on_client_disconnected(t, client):

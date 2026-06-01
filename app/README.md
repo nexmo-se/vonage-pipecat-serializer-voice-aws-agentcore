@@ -58,15 +58,16 @@ Response audio back to caller
 
 Uses root `.env` values:
 
-| Variable                     | Required | Description                                                |
-| ---------------------------- | -------- | ---------------------------------------------------------- |
-| `AWS_REGION`                 | Yes      | AWS region (e.g., `us-east-1`)                             |
-| `BEDROCK_MODEL_ID`           | No       | Defaults to `amazon.nova-2-sonic-v1:0`                     |
-| `AWS_PROFILE`                | No       | AWS named profile (falls back to env/instance credentials) |
-| `AGENTCORE_AGENT_ARN`        | No       | Enables AgentCore bootstrap when set                       |
-| `AGENTCORE_BOOTSTRAP_PROMPT` | No       | Prompt sent to AgentCore before call starts                |
-| `BEDROCK_SYSTEM_INSTRUCTION` | No       | System prompt for Nova Sonic                               |
-| `PORT`                       | No       | Server port (default: `8000`)                              |
+| Variable                       | Required | Description                                                       |
+| ------------------------------ | -------- | ----------------------------------------------------------------- |
+| `AWS_REGION`                   | Yes      | AWS region (e.g., `us-east-1`)                                    |
+| `BEDROCK_MODEL_ID`             | No       | Defaults to `amazon.nova-2-sonic-v1:0`                            |
+| `AWS_PROFILE`                  | No       | AWS named profile (falls back to env/instance credentials)        |
+| `AGENTCORE_AGENT_ARN`          | No       | Enables AgentCore bootstrap when set                              |
+| `AGENTCORE_BOOTSTRAP_PROMPT`   | No       | Prompt sent to AgentCore to shape persona and first-turn behavior |
+| `BEDROCK_INITIAL_USER_MESSAGE` | No       | Opening message the agent speaks when the caller connects         |
+| `BEDROCK_SYSTEM_INSTRUCTION`   | No       | System prompt for Nova Sonic                                      |
+| `PORT`                         | No       | Server port (default: `8000`)                                     |
 
 > **Note:** `VONAGE_APPLICATION_ID`, `VONAGE_PRIVATE_KEY`, and `VONAGE_CALL_ID` are not required — the Voice API webhook approach does not need credentials on the agent side. Vonage connects to you.
 
@@ -139,6 +140,64 @@ Nova Sonic's Bedrock stream must be opened before audio arrives. The `on_client_
 **AgentCore bootstrap:**  
 When `AGENTCORE_AGENT_ARN` is set, the agent calls AgentCore _before_ accepting the WebSocket. The response shapes the initial LLM context (e.g., greeting style, session metadata) before the caller hears anything.
 
+## Controlling First-Turn Behavior
+
+Three environment variables work together to control what the agent knows and says at the start of a call — without any code changes.
+
+### `AGENTCORE_BOOTSTRAP_PROMPT`
+
+**Purpose:** Sent to AgentCore at session start. AgentCore uses this prompt to execute logic (e.g., fetch customer data, determine routing rules) and return a context payload that is injected into the LLM before the caller speaks.
+
+This controls **what the agent knows** before the call begins.
+
+```env
+# Nurse triage assistant
+AGENTCORE_BOOTSTRAP_PROMPT=You are a nurse triage voice assistant. Ask one short question at a time. Capture symptom, onset, severity from 1-10, and red flags. Keep responses concise and empathetic. If severe red-flag symptoms are mentioned, advise immediate emergency care and escalate.
+
+# Sales qualification assistant
+AGENTCORE_BOOTSTRAP_PROMPT=You are a sales qualification assistant. Ask one question at a time to determine budget, timeline, and decision-maker. Be warm and professional.
+
+# General help desk
+AGENTCORE_BOOTSTRAP_PROMPT=You are a help desk assistant. Ask one short question at a time to identify the caller's issue and route to the correct team.
+```
+
+To switch personas, update this value and restart the container — no code changes required.
+
+### `BEDROCK_INITIAL_USER_MESSAGE`
+
+**Purpose:** Injected as the first `assistant` message in the LLM context. This is the **opening line the agent speaks** when the caller connects, before the caller says anything.
+
+This controls **what the agent says first**.
+
+```env
+# Nurse triage greeting
+BEDROCK_INITIAL_USER_MESSAGE=Hello, I am your nurse intake assistant. I will ask a few brief triage questions to help route your care quickly. What symptom are you experiencing now?
+
+# Sales greeting
+BEDROCK_INITIAL_USER_MESSAGE=Hi there! Thanks for calling. I have a few quick questions to connect you with the right team. What brings you in today?
+
+# Help desk greeting
+BEDROCK_INITIAL_USER_MESSAGE=Hello! You have reached the support line. I will help route your request. Can you briefly describe what you need help with?
+```
+
+If left empty, the agent waits for the caller to speak first.
+
+### Combined Example: Nurse Triage
+
+```env
+# Controls persona and reasoning rules
+AGENTCORE_BOOTSTRAP_PROMPT=You are a nurse triage voice assistant. Ask one short question at a time. Capture symptom, onset, severity from 1-10, and red flags. Keep responses concise and empathetic. If severe red-flag symptoms are mentioned, advise immediate emergency care and escalate.
+
+# Controls opening line spoken to caller
+BEDROCK_INITIAL_USER_MESSAGE=Hello, I am your nurse intake assistant. I will ask a few brief triage questions to help route your care quickly. What symptom are you experiencing now?
+```
+
+The LLM context at session start will be:
+
+1. **system** — `BEDROCK_SYSTEM_INSTRUCTION` (base behavior rules)
+2. **user** — AgentCore bootstrap response _(only if `AGENTCORE_AGENT_ARN` is set)_
+3. **assistant** — `BEDROCK_INITIAL_USER_MESSAGE` (spoken greeting to caller)
+
 ## AWS Bedrock AgentCore: Benefits vs. Without It
 
 ### What is AgentCore?
@@ -163,7 +222,7 @@ AWS Bedrock AgentCore is a runtime service that can execute business logic, fetc
 
 ```bash
 AGENTCORE_AGENT_ARN=arn:aws:bedrock-agentcore:us-east-1:123456789012:agent-runtime/ABC123
-AGENTCORE_BOOTSTRAP_PROMPT="Fetch customer details for this call and prepare a brief greeting."
+AGENTCORE_BOOTSTRAP_PROMPT="You are a customer support assistant. Fetch customer details for this call and prepare a brief, personalized greeting."
 ```
 
 **Call flow:**
@@ -211,6 +270,9 @@ AGENTCORE_AGENT_ARN=arn:aws:bedrock-agentcore:us-east-1:123456789012:agent-runti
 
 # Optional: Custom bootstrap prompt (what to ask AgentCore)
 AGENTCORE_BOOTSTRAP_PROMPT="Fetch account details for this inbound call and return a JSON summary."
+
+# Controls the opening line the agent speaks to the caller
+BEDROCK_INITIAL_USER_MESSAGE="Hello! I can see your account details. How can I help you today?"
 
 # Optional: Timeout in seconds (default: 3)
 AGENTCORE_TIMEOUT_SEC=5
