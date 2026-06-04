@@ -1,117 +1,82 @@
-# c5_pipecat_agentcore_ws — Reference + Analysis
+# c5_pipecat_agentcore_ws — Reference
 
-**This folder is reference material only. It is not a test stage and is not executed by `run_all.py`.**
+**Reference material only — not a test stage, not executed by `run_all.py`.**
 
 ## What This Is
 
 An exact copy of [`Vonage/pipecat-examples/aws-agentcore`](https://github.com/Vonage/pipecat-examples/tree/main/aws-agentcore) (BSD 2-Clause License).
 
-This is the upstream example that is claimed to confirm Pipecat + WebSocket transport works with AgentCore Runtime. The purpose of this folder is to study that claim carefully before drawing conclusions about whether `VonageFrameSerializer + FastAPIWebsocketTransport` can work in the same setup.
+Used as a reference baseline to understand how `BedrockAgentCoreApp` and AgentCore Runtime work before building `runtime/agent.py`.
 
 ## Contents (upstream, unmodified)
 
 ```
 c5_pipecat_agentcore_ws/
-├── README.md           ← this file (analysis layer added on top)
-├── bot.py              ← upstream Pipecat bot (run standalone, NOT deployed to AgentCore)
-├── pyproject.toml      ← upstream Python project deps
-├── env.example         ← upstream env template
+├── bot.py              ← Pipecat bot — runs STANDALONE, calls AgentCore over HTTP
+├── pyproject.toml
+├── env.example
 └── agents/
-    ├── dummy_agent.py  ← DEPLOYED to AgentCore Runtime (the actual AgentCore entrypoint)
+    ├── dummy_agent.py  ← DEPLOYED to AgentCore Runtime (BedrockAgentCoreApp entrypoint)
     ├── requirements.txt
     └── pyproject.toml
 ```
 
----
-
-## Critical Architecture Finding
-
-After studying the source, the claim needs careful qualification. **The architecture is NOT what c6 assumed.**
-
-### What the upstream example actually does
+## Architecture of the Upstream Example
 
 ```
-Vonage client
-    │
-    │  (WebSocket)
+Vonage/WebRTC client
+    │  WebSocket
     ▼
-bot.py  ←── runs standalone as a FastAPI/uvicorn server (NOT inside AgentCore Runtime)
-    │         FastAPIWebsocketParams (twilio transport preset)
-    │         or DailyParams / WebRTC
-    │
-    │  (HTTP POST — AWSAgentCoreProcessor.invoke)
+bot.py  — standalone FastAPI/uvicorn server (NOT inside AgentCore)
+    │  HTTP POST via AWSAgentCoreProcessor
     ▼
-AgentCore Runtime  ←── dummy_agent.py or code_agent.py DEPLOYED HERE
-    │                   BedrockAgentCoreApp entrypoint
-    │                   handles text prompts, returns streamed responses
+AgentCore Runtime  — dummy_agent.py deployed here
+    │  BedrockAgentCoreApp, handles text prompts
     ▼
-Claude 3.7 Sonnet (via Bedrock)
+Claude 3.7 Sonnet (Bedrock)
 ```
 
-### What this means
+**Key insight:** In this upstream example, `bot.py` runs *outside* AgentCore. AgentCore is the LLM backend, called over HTTP. The WebSocket lives in `bot.py`, not in AgentCore.
 
-**AgentCore Runtime is used as the LLM/agent backend, invoked over HTTP.** It is not the WebSocket host. The Pipecat bot (`bot.py`) runs as a separate server that:
+## What BedrockAgentCoreApp Actually Exposes
 
-1. Accepts WebSocket connections from clients
-2. Runs a full STT → AgentCore → TTS pipeline
-3. Calls AgentCore via `AWSAgentCoreProcessor` (HTTP POST to the runtime's `/invocations` endpoint)
+The `bedrock-agentcore` SDK's `BedrockAgentCoreApp` is a Starlette app that exposes three routes on port 8080:
 
-The WebSocket transport (`FastAPIWebsocketTransport`) lives in `bot.py`, which runs **outside** AgentCore Runtime.
+| Route | Method | Purpose |
+|-------|--------|---------|
+| `/invocations` | POST | Standard HTTP invoke |
+| `/ping` | GET | Health check |
+| `/ws` | WebSocket | WebSocket endpoint — `@app.websocket` handler |
 
-### What c6 assumed (incorrectly — and was then proven correct by a different mechanism)
+AgentCore Runtime proxies `wss://bedrock-agentcore.{region}.amazonaws.com/runtimes/{arn}/ws` directly to the container's `/ws` route. **This means Vonage can connect directly to AgentCore Runtime as the WebSocket host.**
 
-c6 initially tried to deploy a Pipecat bot with `VonageFrameSerializer + FastAPIWebsocketTransport` **inside** AgentCore Runtime as the entrypoint — expecting AgentCore to expose a WebSocket port.
+This was confirmed by [c6](../c6_agentcore_ws_serializer_smoke/README.md): `VonageFrameSerializer + FastAPIWebsocketTransport` works inside AgentCore Runtime.
 
-**Initial wrong finding:** `HTTP 405 — Method Not Allowed. Use POST.` — because the probe was using the wrong AWS API and hitting `/invocations` instead of `/ws`.
-
-**Actual finding after c6 was fixed:**
-
-`BedrockAgentCoreApp` (from the `bedrock-agentcore` SDK) exposes **THREE routes**:
-- `POST /invocations` — standard HTTP invoke
-- `GET /ping` — health check
-- **`WebSocket /ws`** — WebSocket endpoint via `WebSocketRoute("/ws", ...)`
-
-AgentCore Runtime **does** proxy WebSocket connections from `wss://bedrock-agentcore.{region}.amazonaws.com/runtimes/{arn}/ws` to the container's `/ws` endpoint. The c6 test **PASSED** — see the c6 README for the confirmed test result.
-
-This means the Glean AI Options A and B architecture **is architecturally sound**:
-```
-Vonage Voice API
-→ Lambda /answer → returns NCCO with presigned wss://.../ws URL
-→ AgentCore Runtime /ws → VonageFrameSerializer + FastAPIWebsocketTransport → Pipecat
-```
-
-**Key implementation requirement:** The `@app.websocket` handler in `bot.py` must call `await websocket.accept()` before using `FastAPIWebsocketTransport`. `BedrockAgentCoreApp` does not auto-accept the WebSocket before calling the handler.
-
----
-
-## Revised Conclusion After c6 Passed
-
-**`VonageFrameSerializer + FastAPIWebsocketTransport` CAN work inside AgentCore Runtime.**
-
-This means the Glean AI Options A and B are viable. Vonage can connect directly to an AgentCore Runtime via a presigned WebSocket URL. The main app's FastAPI server does **not** need to be hosted separately — AgentCore Runtime can be the WebSocket host.
-
-The correct production architecture (Options A/B):
+## Production Architecture (confirmed)
 
 ```
 Vonage Voice call
-    │
-    │  GET /answer  (returns NCCO)
+    │  GET /answer
     ▼
-Lambda Function URL  ←── generates presigned wss://.../runtimes/{arn}/ws URL
-    │
-    │  wss://.../runtimes/{arn}/ws  (Vonage Audio Connector WebSocket)
+Lambda Function URL  — generates presigned wss://.../runtimes/{arn}/ws
+    │  wss://... (Vonage Audio Connector WebSocket)
     ▼
-AgentCore Runtime  ←── BedrockAgentCoreApp /ws
-    │                   VonageFrameSerializer + FastAPIWebsocketTransport
-    │                   Pipecat pipeline (+ Nova Sonic or other LLM)
+AgentCore Runtime  — BedrockAgentCoreApp @app.websocket /ws
+    │  VonageFrameSerializer + FastAPIWebsocketTransport + Pipecat + Nova Sonic
     ▼
-(AI backend — Bedrock, Nova Sonic, etc.)
+AWS Bedrock Nova Sonic
 ```
 
-The current main app (`agent.py` + `main.py`) works correctly for local dev and can be adapted for AgentCore by wrapping with `BedrockAgentCoreApp`.
+## Key Implementation Requirements
 
-## Reference: vonage-audio-bot
+1. **`await websocket.accept()`** — must be the first call in `@app.websocket` handler. `BedrockAgentCoreApp` does not auto-accept.
+2. **Presigned URL** — use `AgentCoreRuntimeClient.generate_presigned_url()` from the `bedrock-agentcore` SDK, not the raw boto3 client. Generates `wss://.../runtimes/{arn}/ws`.
+3. **Port** — `app.run(port=8080)` — AgentCore Runtime requirement.
+4. **Credentials** — IMDS inside the container; no `.env` or `AWS_PROFILE` needed.
 
-`Vonage/pipecat-examples/vonage-audio-bot` is the most directly relevant upstream reference. It shows `VonageFrameSerializer + FastAPIWebsocketTransport` wired in exactly the same pattern as the main app — with a standalone FastAPI server receiving Vonage Audio Connector WebSocket connections. It uses OpenAI for STT/LLM/TTS; the main app uses Nova Sonic + AgentCore.
+## References
 
-See: [`Vonage/pipecat-examples/vonage-audio-bot`](https://github.com/Vonage/pipecat-examples/tree/main/vonage-audio-bot)
+- [c6 smoke test — PASSED](../c6_agentcore_ws_serializer_smoke/README.md)
+- [BedrockAgentCoreApp source](https://github.com/aws/bedrock-agentcore-sdk-python/blob/main/src/bedrock_agentcore/runtime/app.py)
+- [vonage-audio-bot upstream example](https://github.com/Vonage/pipecat-examples/tree/main/vonage-audio-bot)
+
