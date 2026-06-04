@@ -1,2 +1,1 @@
-# Stage-specific dependencies for c7.
-# Add packages as implementation progresses.
+bedrock-agentcore>=0.1.0

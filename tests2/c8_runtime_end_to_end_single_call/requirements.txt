@@ -1,2 +1,2 @@
-# Stage-specific dependencies for c8.
-# Add packages as implementation progresses.
+bedrock-agentcore>=0.1.0
+websockets>=12.0

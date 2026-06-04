@@ -89,7 +89,10 @@ class _VoiceAgent:
             "BEDROCK_SYSTEM_INSTRUCTION",
             "You are a helpful voice assistant. Respond warmly and briefly.",
         ).strip()
-        bedrock_initial_user_message = os.getenv("BEDROCK_INITIAL_USER_MESSAGE", "").strip()
+        bedrock_initial_user_message = os.getenv(
+            "BEDROCK_INITIAL_USER_MESSAGE",
+            "Please greet the caller warmly and ask how you can help.",
+        ).strip()
 
         bedrock_connect_timeout = env_int("BEDROCK_CONNECT_TIMEOUT_SECONDS", 10)
         bedrock_read_timeout = env_int("BEDROCK_READ_TIMEOUT_SECONDS", 60)
