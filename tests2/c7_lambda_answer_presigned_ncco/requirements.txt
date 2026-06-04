@@ -1,0 +1,2 @@
+# Stage-specific dependencies for c7.
+# Add packages as implementation progresses.

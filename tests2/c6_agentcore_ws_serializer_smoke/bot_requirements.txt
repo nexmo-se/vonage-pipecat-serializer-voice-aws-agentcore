@@ -1,0 +1,6 @@
+# Runtime bot dependencies (deployed to AgentCore Runtime via direct_code_deploy)
+# VonageFrameSerializer is in upstream pipecat-ai on PyPI (merged from Vonage fork)
+pipecat-ai[aws]>=1.3.0
+bedrock-agentcore>=0.1.0
+fastapi>=0.110.0
+uvicorn[standard]>=0.29.0
