@@ -48,11 +48,11 @@ The `bedrock-agentcore` SDK's `BedrockAgentCoreApp` is a Starlette app that expo
 | `/ping` | GET | Health check |
 | `/ws` | WebSocket | WebSocket endpoint — `@app.websocket` handler |
 
-AgentCore Runtime proxies `wss://bedrock-agentcore.{region}.amazonaws.com/runtimes/{arn}/ws` directly to the container's `/ws` route. **This means Vonage can connect directly to AgentCore Runtime as the WebSocket host.**
+AgentCore Runtime proxies `wss://bedrock-agentcore.{region}.amazonaws.com/runtimes/{arn}/ws` directly to the container's `/ws` route. This was confirmed by [c6](../c6_agentcore_ws_serializer_smoke/README.md): a WebSocket probe connected, sent PCM frames, and `VonageFrameSerializer + FastAPIWebsocketTransport` processed them correctly inside the runtime container.
 
-This was confirmed by [c6](../c6_agentcore_ws_serializer_smoke/README.md): `VonageFrameSerializer + FastAPIWebsocketTransport` works inside AgentCore Runtime.
+## Planned Production Architecture
 
-## Production Architecture (confirmed)
+> **Not yet end-to-end tested.** c6 confirmed the WebSocket/serializer layer. Lambda + actual Vonage call flow is validated by c7 and c8.
 
 ```
 Vonage Voice call
