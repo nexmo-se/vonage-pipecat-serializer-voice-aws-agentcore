@@ -131,3 +131,4 @@ End-to-end validation of the production architecture:
 - Inside AgentCore Runtime, boto3 uses IMDS credentials automatically — no static keys needed
 - Set `BEDROCK_INITIAL_USER_MESSAGE` to prevent Nova Sonic 532 timeout (55s wait for first audio)
 - Use `AgentCoreRuntimeClient.generate_presigned_url()` for presigned URLs — raw boto3 generates the wrong URL type
+- **AgentCore Runtime runs on ARM64 (Graviton).** `direct_code_deploy` handles this automatically. If using a custom Docker container deploy to AgentCore Runtime, build for `linux/arm64`. The App Runner service (`lambda/Dockerfile`) is separate and uses `linux/amd64`.
