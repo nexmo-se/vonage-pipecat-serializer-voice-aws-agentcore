@@ -1,2 +1,0 @@
-# Stage-specific dependencies for c14.
-# Add packages as implementation progresses.
