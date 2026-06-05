@@ -38,7 +38,7 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for the full technical architecture, de
 
 ## Prerequisites
 
-- Docker Desktop
+- Docker Desktop — required for local dev (`docker compose`) and building the App Runner image. Not required for `agentcore deploy`.
 - **Python 3.12** — required for `aws_sdk_bedrock_runtime` (Nova Sonic). Python 3.11 installs silently but crashes at runtime.
 - AWS credentials with `AmazonBedrockFullAccess` + `BedrockAgentCoreFullAccess`
 - ngrok with a reserved domain (local dev only)
@@ -112,7 +112,7 @@ docker build --platform linux/amd64 -t vonage-agentcore-answer .
 ## Tests
 
 ### `tests/` — component validation
-Staged tests (C1–C5) validating Vonage credentials, audio serializer, Pipecat, Bedrock, and AgentCore bootstrap. Run sequentially.
+Staged tests (C1–C5) validating Vonage credentials, audio serializer, Pipecat, and Bedrock. Run sequentially. These validate the local dev stack (`app/`), not the production AgentCore Runtime path.
 
 ### `tests2/` — AgentCore production path validation
 End-to-end validation of the production architecture:
