@@ -56,31 +56,74 @@ PRODUCTION (✅ fully confirmed — real Vonage call tested end-to-end):
 
 ---
 
-## Component 1 — App Runner (`/answer` handler)
+## Component 1 — `/answer` Webhook
 
 **What it does:**
-
 - Receives Vonage `GET /answer` webhook
-- Generates a fresh pre-signed AgentCore WSS URL per call
+- Generates a fresh pre-signed AgentCore WSS URL per call via `AgentCoreRuntimeClient`
 - Returns NCCO to Vonage
 
-**Why App Runner over Lambda Function URL:**
+### Option A — App Runner ✅ Recommended
 
-- Lambda Function URLs are blocked by an org-level SCP in this account (`lambda:InvokeFunctionUrl` denied for public callers)
-- App Runner provides a public HTTPS endpoint not subject to the SCP
-- Auto-generated URL: `https://{id}.{region}.awsapprunner.com`
+App Runner provides a public HTTPS auto-generated endpoint with no infrastructure to manage.
+
+**Why recommended:**
+- Auto-generated public HTTPS URL: `https://{id}.{region}.awsapprunner.com`
+- Not subject to `lambda:InvokeFunctionUrl` SCP restrictions
 - Fully managed — no servers, no nginx, no ALB
+- Runs the same `lambda/answer.py` logic via `lambda/server.py` (FastAPI wrapper)
+
+**IAM requirements:**
+- Instance role (trust: `tasks.apprunner.amazonaws.com`): `AmazonBedrockFullAccess` + `BedrockAgentCoreFullAccess`
+- ECR access role (trust: `build.apprunner.amazonaws.com`): `AWSAppRunnerServicePolicyForECRAccess`
 
 **Deployed endpoint (confirmed working):**
 ```
 https://shs62gbuks.us-east-1.awsapprunner.com/answer
 ```
 
-**ECR image:** `589536902306.dkr.ecr.us-east-1.amazonaws.com/vonage-agentcore-answer:latest`
+### Option B — Lambda Function URL
 
-**Instance role:** `vonage-apprunner-instance-role` (policies: `AmazonBedrockFullAccess`, `BedrockAgentCoreFullAccess`)
+Lambda Function URL is simpler and cheaper (~$0/month at low volume vs App Runner's minimum ~$5/month).
 
-**ECR access role:** `vonage-apprunner-ecr-access-role` (trust: `build.apprunner.amazonaws.com`, policy: `AWSAppRunnerServicePolicyForECRAccess`)
+**Requirements:**
+- Lambda execution role: `AmazonBedrockFullAccess` + `BedrockAgentCoreFullAccess`
+- Function URL `AuthType: NONE` + resource policy `Principal: *`
+- **No org-level SCP blocking `lambda:InvokeFunctionUrl`**
+
+**Known blocker:** Org-level SCPs can deny `lambda:InvokeFunctionUrl` for public callers even when IAM policies allow it. `aws iam simulate-principal-policy` returns `allowed` but **does not evaluate SCPs** — the actual HTTP request returns HTTP 403 `AccessDeniedException`. If your account is under an AWS Organization, verify the SCP before choosing this option.
+
+Deploy:
+```bash
+cd lambda/
+zip lambda.zip answer.py
+aws lambda create-function \
+    --function-name vonage-answer \
+    --runtime python3.12 \
+    --handler answer.handler \
+    --zip-file fileb://lambda.zip \
+    --role arn:aws:iam::{account}:role/vonage-answer-role \
+    --environment Variables="{
+        AGENTCORE_RUNTIME_ARN={runtime-arn},
+        VONAGE_NUMBER={your-vonage-number},
+        AWS_DEFAULT_REGION=us-east-1
+    }"
+
+aws lambda create-function-url-config --function-name vonage-answer --auth-type NONE
+# → set Function URL as Vonage Answer URL
+```
+
+### Option C — Local dev with ngrok
+
+For local development and as a fallback when neither Lambda nor App Runner is available:
+
+```bash
+cd lambda/
+pip install -r requirements.txt
+AGENTCORE_RUNTIME_ARN="..." VONAGE_NUMBER="+1..." AWS_PROFILE=vonage-dev \
+    uvicorn server:app --host 0.0.0.0 --port 3000
+# ngrok http 3000 → set ngrok URL as Vonage Answer URL
+```
 
 ### `lambda/answer.py`
 
