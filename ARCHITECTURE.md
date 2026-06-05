@@ -63,8 +63,6 @@ PRODUCTION (✅ fully confirmed — real Vonage call tested end-to-end):
 - Generates a fresh pre-signed AgentCore WSS URL per call via `AgentCoreRuntimeClient`
 - Returns NCCO to Vonage
 
-> **Canonical pattern:** The AWS blog on Pipecat + AgentCore Runtime documents this exact three-step flow as the standard WebSocket architecture: (1) client requests endpoint from intermediary server, (2) server generates SigV4 pre-signed URL, (3) client connects directly to AgentCore Runtime via presigned URL. App Runner and Lambda both serve the intermediary server role.
-
 ### Option A — App Runner ✅ Recommended
 
 App Runner provides a public HTTPS auto-generated endpoint with no infrastructure to manage.
@@ -310,8 +308,6 @@ agentcore configure -e agent.py -r us-east-1
 agentcore deploy
 # → copy Runtime ARN → set as AGENTCORE_RUNTIME_ARN in App Runner env
 ```
-
-> **ARM64 note:** AgentCore Runtime runs on ARM64 (Graviton) infrastructure. With `direct_code_deploy`, the runtime builds the container automatically for the correct architecture. If you switch to a custom Docker container deploy, build for `linux/arm64` — not `linux/amd64`. The App Runner image (`lambda/Dockerfile`) is a separate service running on x86 and correctly built for `linux/amd64`.
 
 ---
 
