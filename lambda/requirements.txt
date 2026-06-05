@@ -1,6 +1,0 @@
-# Lambda /answer dependencies
-bedrock-agentcore>=0.1.0
-
-# Local server (lambda/server.py) — for ngrok testing when Lambda URL is blocked
-fastapi>=0.110.0
-uvicorn[standard]>=0.29.0

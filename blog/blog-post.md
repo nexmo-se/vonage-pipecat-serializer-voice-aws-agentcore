@@ -119,7 +119,7 @@ Audio response streams back to caller
 | Component | Role |
 | ----------------------------------- | ---------------------------------------------------------------- |
 | Vonage Voice API | Telephony — incoming phone calls via NCCO WebSocket connect |
-| App Runner (`lambda/server.py`) | Public HTTPS endpoint — handles `/answer`, generates pre-signed AgentCore WSS URL |
+| App Runner (`answer/server.py`) | Public HTTPS endpoint — handles `/answer`, generates pre-signed AgentCore WSS URL |
 | AgentCore Runtime (`runtime/agent.py`) | Managed serverless container — runs the Pipecat pipeline |
 | Vonage Pipecat Serializer | Converts Vonage PCM audio frames to/from Pipecat internal format |
 | Amazon Nova Sonic | Low-latency speech-to-speech intelligence |
@@ -133,14 +133,14 @@ cd vonage-pipecat-serializer-voice-aws-agentcore
 
 The repository layout:
 
-```
+```text
 vonage-pipecat-serializer-voice-aws-agentcore/
-├── app/                 # Pipecat agent runtime (agent.py, server.py)
-├── tests/               # Isolated component validation scripts
-├── docker-compose.yml   # Container orchestration
-├── requirements.txt     # Python dependencies
-├── .env.example         # Environment variable template
-└── README.md
+├── app/                 # LOCAL DEV — FastAPI app (main.py, agent.py), port 8000
+├── runtime/             # PRODUCTION — BedrockAgentCoreApp (agent.py), agentcore deploy
+├── answer/              # PRODUCTION — /answer handler (App Runner or Lambda Function URL)
+├── docker-compose.yml
+├── .env.example
+└── README.md            # Full deployment guide
 ```
 
 ## Step 2 — Set Up Your Environment
@@ -157,7 +157,8 @@ Open `.env` and fill in your credentials:
 # Vonage Voice API
 VONAGE_APPLICATION_ID=your-vonage-application-id
 VONAGE_PRIVATE_KEY=private.key
-VONAGE_CALL_ID=your-vonage-call-id
+VONAGE_NUMBER=+14155551234
+VONAGE_CALL_ID=your-vonage-call-id          # local/tests only
 
 # AWS
 AWS_PROFILE=vonage-dev
@@ -168,16 +169,18 @@ BEDROCK_READ_TIMEOUT_SECONDS=60
 BEDROCK_MAX_ATTEMPTS=4
 BEDROCK_VALIDATE_MODEL_ID=true
 
-# AgentCore (optional — leave blank to skip bootstrap)
-AGENTCORE_AGENT_ARN=arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/your-runtime-id
+# AgentCore
+AGENTCORE_AGENT_ARN=arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/your-runtime-id   # local bootstrap (optional)
+AGENTCORE_RUNTIME_ARN=arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/your-runtime-id  # production /answer webhook
 
 # Nova Sonic session guard
 NOVA_SESSION_WARN_SECONDS=410
 NOVA_SESSION_LIMIT_SECONDS=470
 NOVA_SESSION_STOP_ON_LIMIT=false
 
-# Agent behavior
+# Agent behavior (local dev via .env; production via runtime/agent.py defaults)
 BEDROCK_SYSTEM_INSTRUCTION=You are a helpful voice assistant. Respond warmly and briefly.
+BEDROCK_INITIAL_USER_MESSAGE=Hello! How can I help you today?
 AGENTCORE_BOOTSTRAP_PROMPT=Provide one short greeting plus one helpful follow-up question for a live voice assistant session.
 
 # App
@@ -196,7 +199,7 @@ aws sts get-caller-identity --profile vonage-dev
 
 ## Step 3 — Build the Vonage Audio Serializer Pipeline
 
-The `agent.py` implements a `VonageSerializerVoiceAgent` class — one instance per inbound Vonage WebSocket connection. The Vonage Pipecat Serializer handles all PCM audio frame conversion between Vonage's WebSocket format and Pipecat's internal pipeline format.
+`app/agent.py` (local dev) and `runtime/agent.py` (production) implement the voice pipeline — one instance per inbound Vonage WebSocket connection. The Vonage Pipecat Serializer handles all PCM audio frame conversion between Vonage's WebSocket format and Pipecat's internal pipeline format.
 
 ```python
 from pipecat.pipeline.pipeline import Pipeline
@@ -294,23 +297,41 @@ if __name__ == "__main__":
     app.run(port=8080)
 ```
 
+Customize the greeting and persona in `runtime/agent.py` before deploying — edit the `BEDROCK_SYSTEM_INSTRUCTION` and `BEDROCK_INITIAL_USER_MESSAGE` defaults (e.g. nurse triage, support desk).
+
 Deploy the runtime:
 
 ```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install bedrock-agentcore-starter-toolkit
+
 cd runtime/
-# Requires bedrock-agentcore-starter-toolkit and uv in PATH
-agentcore configure -e agent.py -r us-east-1
-# Select: Direct Code Deploy, Python 3.12
-agentcore deploy
-# → copy Runtime ARN from output
-# → set AGENTCORE_RUNTIME_ARN in App Runner environment variables
+
+# First-time setup — creates .bedrock_agentcore.yaml (gitignored)
+agentcore configure \
+  -e agent.py \
+  -r us-east-1 \
+  -n your_agent_name \
+  --non-interactive \
+  --deployment-type direct_code_deploy \
+  --runtime PYTHON_3_12 \
+  -rf requirements.txt
+
+# First deploy
+AWS_PROFILE=vonage-dev agentcore deploy -a your_agent_name
+
+# Redeploy after code changes (e.g. greeting updates)
+AWS_PROFILE=vonage-dev agentcore deploy -a your_agent_name --auto-update-on-conflict
 ```
 
-> **Important:** Select **Python 3.12** during `agentcore configure`. The `aws_sdk_bedrock_runtime` package is only available for Python 3.12+. Selecting Python 3.11 causes a silent install that crashes at runtime with `ModuleNotFoundError`.
+Copy the **Runtime ARN** from the deploy output and set it as `AGENTCORE_RUNTIME_ARN` in App Runner environment variables.
+
+> **Important:** Use **Python 3.12** (`PYTHON_3_12`). The `aws_sdk_bedrock_runtime` package is only available for Python 3.12+. Python 3.11 installs silently and crashes at runtime with `ModuleNotFoundError`.
 
 ## Step 5 — Make a Test Call
 
-**Local dev (ngrok):** The `/answer` endpoint in `app/agent.py` returns an NCCO pointing directly to your ngrok WebSocket:
+**Local dev (ngrok):** The `/answer` endpoint in `app/main.py` returns an NCCO pointing directly to your ngrok WebSocket:
 
 ```json
 [
@@ -328,13 +349,13 @@ agentcore deploy
 ]
 ```
 
-**Production (App Runner + AgentCore Runtime):** The `/answer` endpoint in `lambda/answer.py` (served by App Runner) generates a **fresh pre-signed AgentCore WebSocket URL per call**:
+**Production (App Runner + AgentCore Runtime):** The `/answer` endpoint in `answer/answer.py` (served by App Runner) generates a **fresh pre-signed AgentCore WebSocket URL per call**:
 
 ```json
 [
   {
     "action": "connect",
-    "from": "+12012791019",
+    "from": "+14155551234",
     "endpoint": [
       {
         "type": "websocket",
@@ -385,7 +406,7 @@ pipecat-ai[aws-nova-sonic,websocket]>=1.3.0
 bedrock-agentcore>=0.1.0
 uvicorn[standard]>=0.29.0
 
-# Answer handler + App Runner container (lambda/requirements.txt)
+# Answer handler + App Runner container (answer/requirements.txt)
 bedrock-agentcore>=0.1.0
 fastapi>=0.110.0
 uvicorn[standard]>=0.29.0
@@ -401,46 +422,39 @@ uvicorn[standard]>=0.29.0
 
 The production architecture requires two AWS resources: an **AgentCore Runtime** (your Pipecat agent) and an **App Runner service** (your `/answer` webhook). No EC2, no ECS, no ALB.
 
+See the root [README.md](../README.md) for the complete step-by-step deployment guide. Summary:
+
 ### Step 1 — Deploy the agent to AgentCore Runtime
 
-```bash
-cd runtime/
-agentcore deploy
-# Select: Direct Code Deploy, Python 3.12
-# → Runtime ARN printed on completion
-```
-
-AgentCore Runtime handles:
-- Container lifecycle management
-- Auto-scaling
-- IMDS credentials for boto3 (no static AWS keys needed)
-- WebSocket routing to your `@app.websocket` handler
+Follow **Step 4** in the README (`agentcore configure` + `agentcore deploy`). AgentCore Runtime handles container lifecycle, auto-scaling, IMDS credentials for boto3, and WebSocket routing to your `@app.websocket` handler.
 
 **IAM execution role** needs `AmazonBedrockFullAccess` + `BedrockAgentCoreFullAccess`.
 
 ### Step 2 — Build and deploy the App Runner answer service
 
-App Runner provides a public HTTPS endpoint that Vonage calls for `/answer`. It runs `lambda/server.py` (a FastAPI wrapper around `lambda/answer.py`):
+App Runner provides a public HTTPS endpoint that Vonage calls for `/answer`. It runs `answer/server.py` (a FastAPI wrapper around `answer/answer.py`):
 
 ```bash
-# Build image for linux/amd64 (App Runner requires x86)
-cd lambda/
+cd answer/
 docker build --platform linux/amd64 -t vonage-agentcore-answer .
 
-# Push to ECR
-AWS_ACCOUNT=123456789012
-ECR="$AWS_ACCOUNT.dkr.ecr.us-east-1.amazonaws.com/vonage-agentcore-answer"
-aws ecr create-repository --repository-name vonage-agentcore-answer
-docker tag vonage-agentcore-answer:latest $ECR:latest
-aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $ECR
-docker push $ECR:latest
+export AWS_ACCOUNT_ID=123456789012
+export AWS_REGION=us-east-1
+export ECR_URI="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/vonage-agentcore-answer"
 
-# Create App Runner service
+aws ecr create-repository --repository-name vonage-agentcore-answer  # first time only
+aws ecr get-login-password --region "$AWS_REGION" | \
+  docker login --username AWS --password-stdin "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+
+docker tag vonage-agentcore-answer:latest "${ECR_URI}:latest"
+docker push "${ECR_URI}:latest"
+
+# Create App Runner service (first time)
 aws apprunner create-service \
   --service-name vonage-agentcore-answer \
   --source-configuration "{
     \"ImageRepository\": {
-      \"ImageIdentifier\": \"$ECR:latest\",
+      \"ImageIdentifier\": \"${ECR_URI}:latest\",
       \"ImageRepositoryType\": \"ECR\",
       \"ImageConfiguration\": {
         \"Port\": \"3000\",
@@ -452,36 +466,51 @@ aws apprunner create-service \
       }
     },
     \"AuthenticationConfiguration\": {
-      \"AccessRoleArn\": \"arn:aws:iam::$AWS_ACCOUNT:role/vonage-apprunner-ecr-access-role\"
+      \"AccessRoleArn\": \"arn:aws:iam::${AWS_ACCOUNT_ID}:role/your-apprunner-ecr-access-role\"
     }
   }" \
-  --instance-configuration "{\"InstanceRoleArn\": \"arn:aws:iam::$AWS_ACCOUNT:role/vonage-apprunner-instance-role\"}" \
+  --instance-configuration "{
+    \"InstanceRoleArn\": \"arn:aws:iam::${AWS_ACCOUNT_ID}:role/your-apprunner-instance-role\"
+  }" \
   --region us-east-1
-# → copy ServiceUrl from output
+
+# Redeploy after answer/ changes
+aws apprunner start-deployment \
+  --service-arn "arn:aws:apprunner:us-east-1:{account-id}:service/vonage-agentcore-answer/{service-id}" \
+  --region us-east-1
 ```
 
 **App Runner IAM setup:**
 - **Instance role** (trust: `tasks.apprunner.amazonaws.com`): `AmazonBedrockFullAccess` + `BedrockAgentCoreFullAccess`
 - **ECR access role** (trust: `build.apprunner.amazonaws.com`): `AWSAppRunnerServicePolicyForECRAccess`
 
+> **Alternative:** Lambda Function URL can replace App Runner in accounts without `lambda:InvokeFunctionUrl` SCP restrictions. See README Option B.
+
 ### Step 3 — Set Vonage Answer URL
 
 In your Vonage Dashboard → Applications → your app, set the **Answer URL** to:
-```
+
+```text
 https://{service-id}.{region}.awsapprunner.com/answer
 ```
 
 Verify it returns a valid NCCO:
+
 ```bash
-curl https://{service-id}.us-east-1.awsapprunner.com/answer
-# Should return: [{"action":"connect","from":"+1...","endpoint":[{"type":"websocket","uri":"wss://bedrock-agentcore..."}]}]
+curl "https://{service-id}.{region}.awsapprunner.com/answer"
+```
+
+Expected response shape:
+
+```json
+[{"action":"connect","from":"+1...","endpoint":[{"type":"websocket","uri":"wss://bedrock-agentcore..."}]}]
 ```
 
 **Total AWS resources:** 1 AgentCore Runtime + 1 App Runner service + 1 ECR repository.
 
 ## Critical Findings
 
-These were discovered through systematic testing. Skipping any of these will break the deployment.
+These were discovered during production deployment. Skipping any of these will break the deployment.
 
 **1. `await websocket.accept()` is mandatory in AgentCore Runtime**
 

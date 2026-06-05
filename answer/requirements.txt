@@ -1,0 +1,6 @@
+# App Runner /answer dependencies
+bedrock-agentcore>=0.1.0
+
+# FastAPI server (answer/server.py) — App Runner production + local ngrok dev
+fastapi>=0.110.0
+uvicorn[standard]>=0.29.0

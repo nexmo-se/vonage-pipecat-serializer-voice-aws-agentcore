@@ -87,11 +87,15 @@ class _VoiceAgent:
         bedrock_model_id = os.getenv("BEDROCK_MODEL_ID", "amazon.nova-2-sonic-v1:0").strip()
         system_instruction = os.getenv(
             "BEDROCK_SYSTEM_INSTRUCTION",
-            "You are a helpful voice assistant. Respond warmly and briefly.",
+            "You are a nurse triage voice assistant. Ask one short question at a time. "
+            "Capture symptom, onset, severity from 1-10, and red flags. Keep responses "
+            "concise and empathetic. If severe red-flag symptoms are mentioned, advise "
+            "immediate emergency care and escalate.",
         ).strip()
         bedrock_initial_user_message = os.getenv(
             "BEDROCK_INITIAL_USER_MESSAGE",
-            "Please greet the caller warmly and ask how you can help.",
+            "Hello, I am your nurse intake assistant. I will ask a few brief triage "
+            "questions to help route your care quickly. What symptom are you experiencing now?",
         ).strip()
 
         bedrock_connect_timeout = env_int("BEDROCK_CONNECT_TIMEOUT_SECONDS", 10)

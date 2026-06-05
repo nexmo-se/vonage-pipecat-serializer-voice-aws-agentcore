@@ -12,7 +12,7 @@ Validate unknowns for Lambda Function URL + AgentCore Runtime integration while 
 > `pipecat-ai/pipecat-examples/aws-agentcore` source as a reference baseline for c6.
 
 1. **c6_agentcore_ws_serializer_smoke** ✅ PASSED — VonageFrameSerializer + FastAPIWebsocketTransport confirmed inside AgentCore Runtime
-2. c7_lambda_answer_presigned_ncco *(requires `lambda/answer.py` to be built first)*
+2. c7_lambda_answer_presigned_ncco *(requires `answer/answer.py` to be built first)*
 3. c8_runtime_end_to_end_single_call *(requires `runtime/agent.py` to be built first)*
 4. c8b_runtime_bargein_disconnect
 5. c9_runtime_session_correlation
@@ -23,7 +23,7 @@ Validate unknowns for Lambda Function URL + AgentCore Runtime integration while 
 
 ## Promotion Rule
 
-c6 passed. Build `runtime/agent.py` and `lambda/answer.py` (see `ARCHITECTURE.md`), then run c7 → c8 onward.
+c6 passed. Build `runtime/agent.py` and `answer/answer.py` (see root `README.md`), then run c7 → c8 onward.
 
 ## Common Artifacts Per Stage
 

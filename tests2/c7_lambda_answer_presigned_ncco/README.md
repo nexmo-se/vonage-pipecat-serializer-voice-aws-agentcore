@@ -4,7 +4,7 @@
 
 ## Goal
 
-Validate `lambda/answer.py` produces valid NCCO with a fresh AgentCore presigned WSS URL.
+Validate `answer/answer.py` produces valid NCCO with a fresh AgentCore presigned WSS URL.
 
 ## What was tested
 

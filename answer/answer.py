@@ -1,6 +1,6 @@
-"""Lambda /answer handler — generates AgentCore presigned WSS URL and returns Vonage NCCO.
+"""App Runner /answer handler — generates AgentCore presigned WSS URL and returns Vonage NCCO.
 
-Triggered by Vonage GET /answer webhook via Lambda Function URL.
+Triggered by Vonage GET /answer webhook (App Runner or local dev via answer/server.py).
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ def handler(event: dict, context) -> dict:
 
     runtime_arn = os.environ["AGENTCORE_RUNTIME_ARN"]
     vonage_number = os.environ["VONAGE_NUMBER"]
-    region = os.environ.get("AWS_REGION", "us-east-1")
+    region = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
     session_id = str(uuid.uuid4())
 
     # AgentCoreRuntimeClient generates wss://.../runtimes/{arn}/ws — the correct

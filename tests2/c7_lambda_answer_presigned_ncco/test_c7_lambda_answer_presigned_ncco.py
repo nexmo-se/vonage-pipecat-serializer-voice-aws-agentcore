@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""c7: Validate lambda/answer.py produces valid NCCO with AgentCore presigned WSS URL.
+"""c7: Validate answer/answer.py produces valid NCCO with AgentCore presigned WSS URL.
 
 Invokes the handler directly (no Lambda deployment required) with the real
 runtime ARN so the presigned URL API call is live.
@@ -40,10 +40,10 @@ def _invoke(method: str = "GET") -> dict:
     os.environ["AWS_DEFAULT_REGION"] = AWS_REGION
 
     # Import lazily so env vars are set first
-    lambda_dir = os.path.join(
-        os.path.dirname(__file__), "..", "..", "lambda"
+    answer_dir = os.path.join(
+        os.path.dirname(__file__), "..", "..", "answer"
     )
-    sys.path.insert(0, os.path.abspath(lambda_dir))
+    sys.path.insert(0, os.path.abspath(answer_dir))
     import answer  # noqa: PLC0415
     import importlib
     importlib.reload(answer)
