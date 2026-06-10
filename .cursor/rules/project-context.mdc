@@ -1,0 +1,47 @@
+---
+description: Vonage + AgentCore voice agent project conventions and internal context
+alwaysApply: true
+---
+
+# vonage-pipecat-serializer-voice-aws-agentcore
+
+Read `AI_CONTEXT.md` (repo root, gitignored) for full internal context: AWS account, live resources, deploy steps, and constraints.
+
+## Stack
+
+Vonage Voice API → Pipecat (`VonageFrameSerializer`) → AWS Bedrock Nova Sonic → hosted in **AgentCore Runtime** (prod) or **FastAPI** (local).
+
+## Repo layout
+
+| Path | Purpose |
+| --- | --- |
+| `app/` | Local dev — `main.py` + `agent.py`, port 8000, ngrok |
+| `runtime/` | Production voice agent — `agentcore deploy`, port 8080 |
+| `answer/` | Production `/answer` webhook — App Runner (not `lambda/`) |
+
+Public docs: `README.md`. Blog draft: `blog/blog-post.md`. No `ARCHITECTURE.md`.
+
+## Production deploy
+
+1. Edit greeting in `runtime/agent.py` → `agentcore deploy --auto-update-on-conflict`
+2. App Runner: build/push `answer/` Docker image → `aws apprunner start-deployment`
+3. Vonage Answer URL → App Runner `/answer`
+
+Greeting/persona changes require **runtime** redeploy, not App Runner.
+
+## Critical technical findings
+
+- Nova Sonic 532 timeout fix: set `BEDROCK_INITIAL_USER_MESSAGE` and queue `LLMRunFrame()` immediately on `on_client_connected` — without it Nova Sonic times out after 55 seconds with `InternalErrorCode=532`
+
+## Non-negotiables
+
+- Python **3.12** for AgentCore Runtime
+- `await websocket.accept()` first line in `@app.websocket` handlers
+- `AgentCoreRuntimeClient.generate_presigned_url()` for WSS URLs (not raw boto3)
+- Set `BEDROCK_INITIAL_USER_MESSAGE` to prevent Nova Sonic 532 timeout
+- App Runner env: `AGENTCORE_RUNTIME_ARN`, `VONAGE_NUMBER`, `AWS_DEFAULT_REGION`
+- Account SCP blocks Lambda Function URL — App Runner is the production path
+
+## Code style
+
+Minimal diffs. Match existing patterns. Do not add tests or public docs references to `tests/` unless asked.

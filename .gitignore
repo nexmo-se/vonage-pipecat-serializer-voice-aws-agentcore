@@ -1,6 +1,10 @@
 # Local Development folder with notes and credentials. This should be ignored to prevent accidental commits of sensitive information.
 /dev
 
+# Diagram generation temp artifacts
+.venv-diagram/
+.matplotlib-cache/
+
 # ignore ./test/ directory, which contains test files that are not meant to be distributed
 test/
 
@@ -143,6 +147,7 @@ celerybeat.pid
 # Environments
 .env
 .envrc
+AI_CONTEXT.md
 .venv
 env/
 venv/
