@@ -1,6 +1,6 @@
 # Deploying a Real-Time AI Agent for Voice Calls with Vonage and AWS AgentCore
 
-The Vonage Audio Serializer for Pipecat is designed for audio-only AI use cases across both Vonage Voice API and Video API. It is the simplest path to a working agent and the right choice when you don't need video frame processing. If you need full video frame processing or video avatars, see Part 1 which covers the Vonage Video Connector Pipecat Integration.
+The Vonage Audio Serializer for Pipecat is designed for audio-only AI use cases across both Vonage Voice API and Video API. It is the simplest path to a working agent and the right choice when you don't need video frame processing. If you need full video frame processing or video avatars, see Part 1 which covers the [Vonage Video Transport for Pipecat](https://developer.vonage.com/en/video/guides/vonage-pipecat-serializer-overview).
 
 Developers can now deploy AI agents directly into live phone calls. Instead of static IVR menus or scripted bots, you can build AI agents that listen, respond naturally, and take real-world actions — all over a standard Vonage phone call.
 
@@ -32,21 +32,22 @@ Before you begin, make sure you have the following:
 
 - A Vonage API account with Voice API enabled and a phone number linked to a Voice application
 - An AWS account with Amazon Bedrock access and Nova Sonic (`amazon.nova-2-sonic-v1:0`) enabled in `us-east-1`
-- **Python 3.12 or later** — the `aws_sdk_bedrock_runtime` package (required for Nova Sonic) is only distributed for Python 3.12+. On Python 3.11 it installs silently without it, causing `ModuleNotFoundError` at runtime.
+- **Python 3.12** — required for **AgentCore Runtime** (`runtime/`). The `aws_sdk_bedrock_runtime` package is only distributed for Python 3.12+; Python 3.11 installs silently but crashes at runtime. Local `app/` uses Python 3.13 via Docker.
 - Docker Desktop — the app runs in Docker for an isolated, reproducible runtime
 - ngrok with a reserved domain for a stable Vonage webhook URL during local development
-- AWS CLI configured (`aws configure --profile vonage-dev`)
+- AWS CLI configured (`aws configure --profile vonage-dev`) with Bedrock access in `us-east-1`
 - `bedrock-agentcore-starter-toolkit` CLI (`pip install bedrock-agentcore-starter-toolkit`) for runtime deployment
+- Vonage Voice application with a public Answer URL (inbound webhook flow — no Vonage credentials needed on the agent side)
 
 Don't have a Vonage account yet? [Sign up for free](https://developer.vonage.com). No AWS account? [Create one here](https://aws.amazon.com).
 
 ## This Is Part 2 of a Two-Part Series
 
-Part 1 covered the Vonage Video Connector Pipecat Integration — a WebRTC-based path for AI agents that join Vonage Video sessions as native participants.
+Part 1 covered the [Vonage Video Transport for Pipecat](https://developer.vonage.com/en/video/guides/vonage-pipecat-serializer-overview) — a WebRTC-based path for AI agents that join Vonage Video sessions as native participants.
 
 This post covers the Vonage Audio Serializer for Pipecat — a WebSocket-based path for voice/telephony use cases. The official Vonage docs summarize the relationship between the two integrations:
 
-> Use the Audio Serializer when you need Voice API support or want the simplest path to a working agent. Use the Video Connector Transport when you need full video frame processing or the lowest possible WebRTC latency.
+> Use the Audio Serializer when you need Voice API support or want the simplest path to a working agent. Use the Video Transport when you need full video frame processing or the lowest possible WebRTC latency.
 
 |                         | [Vonage Audio Serializer for Pipecat](https://developer.vonage.com/en/voice/voice-api/guides/vonage-audio-serializer-for-pipecat-overview) (this post) | [Vonage Video Transport for Pipecat](https://developer.vonage.com/en/video/guides/vonage-pipecat-serializer-overview) (Part 1) |
 | ----------------------- | ---------------------------- | ------------------------ |
@@ -78,18 +79,22 @@ _Architecture overview: Vonage Voice API → App Runner /answer → AgentCore Ru
 
 ```
 LOCAL DEV
-Caller dials Vonage number
+Vonage Voice Call
+  ↓ GET /answer
+ngrok → app/main.py /answer (port 8000)
+  ↓ returns NCCO with wss://your-reserved-domain.ngrok.app/ws
+Vonage connects to app/main.py /ws
   ↓
-Vonage Voice API
-  ↓ GET /answer → ngrok → FastAPI /answer (returns NCCO with wss://ngrok/ws)
-  ↓ Vonage connects WebSocket to /ws
-FastAPI /ws  →  VonageFrameSerializer  →  Pipecat  →  Nova Sonic
+app/agent.py
+  ↓ VonageFrameSerializer + FastAPIWebsocketTransport
+  ↓
+Pipecat Pipeline → Amazon Nova Sonic
 
 PRODUCTION
 Caller dials Vonage number
   ↓
 Vonage Voice API
-  ↓ GET /answer → App Runner /answer
+  ↓ GET /answer → App Runner answer/server.py /answer
     AgentCoreRuntimeClient.generate_presigned_url()
     → returns NCCO with wss://bedrock-agentcore.../runtimes/{arn}/ws?...
   ↓ Vonage connects via pre-signed WebSocket URL
@@ -114,9 +119,15 @@ The repository layout:
 
 ```text
 vonage-pipecat-serializer-voice-aws-agentcore/
-├── app/                 # LOCAL DEV — FastAPI app (main.py, agent.py), port 8000
-├── runtime/             # PRODUCTION — BedrockAgentCoreApp (agent.py), agentcore deploy
-├── answer/              # PRODUCTION — /answer handler (App Runner or Lambda Function URL)
+├── app/                 # LOCAL DEV — FastAPI (main.py, agent.py), port 8000
+├── runtime/             # PRODUCTION — BedrockAgentCoreApp, port 8080, direct code deploy
+│                        #   no Dockerfile; .bedrock_agentcore.yaml (gitignored)
+├── answer/              # PRODUCTION — App Runner /answer handler, port 3000
+│   ├── answer.py        #   presigned URL + NCCO logic
+│   ├── server.py        #   FastAPI wrapper (GET /, GET /answer)
+│   └── Dockerfile       #   python:3.12-slim
+├── blog/                # Tutorial draft (this file)
+├── images/              # Architecture diagrams
 ├── docker-compose.yml
 ├── .env.example
 └── README.md            # Full deployment guide
@@ -128,9 +139,10 @@ vonage-pipecat-serializer-voice-aws-agentcore/
 
 ```bash
 cp .env.example .env
+touch private.key   # docker-compose mounts this file; content not needed for inbound calls
 ```
 
-Open `.env` and fill in your credentials:
+Open `.env` and fill in your credentials. For the inbound webhook flow, `AWS_PROFILE`, `BEDROCK_MODEL_ID`, and `BEDROCK_INITIAL_USER_MESSAGE` (recommended) are the essentials — `VONAGE_APPLICATION_ID` and `VONAGE_PRIVATE_KEY` are optional and used by tests only:
 
 ```bash
 # Vonage Voice API
@@ -174,13 +186,22 @@ export AWS_PROFILE=vonage-dev
 aws sts get-caller-identity --profile vonage-dev
 ```
 
-> **Note:** The production app webhook flow does not require `VONAGE_CALL_ID` at runtime. Vonage calls `/answer`, receives the NCCO, then connects media to `/ws` automatically.
+> **Note:** The production webhook flow does not require `VONAGE_CALL_ID` or Vonage app credentials on the agent side. Vonage calls `/answer`, receives the NCCO, then connects media to the WebSocket URI automatically.
+
+Start the local agent:
+
+```bash
+docker compose --profile app up --build app
+ngrok http --domain=your-reserved-domain.ngrok.app 8000
+# Set Vonage Answer URL → https://your-reserved-domain.ngrok.app/answer
+```
 
 ## Step 3 — Build the Vonage Audio Serializer Pipeline
 
-`app/agent.py` (local dev) and `runtime/agent.py` (production) implement the voice pipeline — one instance per inbound Vonage WebSocket connection. The Vonage Pipecat Serializer handles all PCM audio frame conversion between Vonage's WebSocket format and Pipecat's internal pipeline format.
+`app/agent.py` (local dev) and `runtime/agent.py` (production) implement the voice pipeline — one instance per inbound Vonage WebSocket connection. The Vonage Audio Serializer for Pipecat handles all PCM audio frame conversion between Vonage's WebSocket format and Pipecat's internal pipeline format.
 
 ```python
+from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
@@ -259,13 +280,14 @@ When a Vonage call comes in, App Runner handles the `/answer` webhook, generates
 
 The `runtime/agent.py` file is your production agent — it runs **inside** AgentCore Runtime. It is not a caller of AgentCore; it **is** the AgentCore-hosted service.
 
-Key structural differences from `app/agent.py` (local dev):
+Key structural differences between local and production:
 
-| | `app/agent.py` (local dev) | `runtime/agent.py` (production) |
-|---|---|---|
-| App wrapper | `FastAPI()` | `BedrockAgentCoreApp()` |
+| | Local (`app/`) | Production (`runtime/`) |
+| --- | --- | --- |
+| App wrapper | `FastAPI()` in `main.py` | `BedrockAgentCoreApp()` in `agent.py` |
+| Pipeline | `agent.py` (`VonageSerializerVoiceAgent`) | `agent.py` (`_VoiceAgent`) |
 | Port | 8000 | **8080** (AgentCore requirement) |
-| `/answer` endpoint | ✅ Present in `app/main.py` | ❌ Removed — App Runner handles it |
+| `/answer` endpoint | `main.py` | Removed — App Runner handles it |
 | AWS credentials | `AWS_PROFILE` / `.env` | **IMDS automatic** — no static keys |
 | AgentCore bootstrap | optional local call | **removed** — agent IS in AgentCore |
 
@@ -284,7 +306,7 @@ async def ws_handler(websocket: WebSocket, context) -> None:
 
 > **Note:** `await websocket.accept()` must be called explicitly. `BedrockAgentCoreApp` does not auto-accept WebSocket connections — omitting it causes AgentCore to close the connection with error 1008 "write buffer limit exceeded".
 
-Customize the greeting and persona in `runtime/agent.py` before deploying — edit the `BEDROCK_SYSTEM_INSTRUCTION` and `BEDROCK_INITIAL_USER_MESSAGE` defaults (e.g. nurse triage, support desk). Queue `LLMRunFrame()` on connect to prevent Nova Sonic 532 timeout.
+Customize the greeting and persona in `runtime/agent.py` before deploying — edit the `BEDROCK_SYSTEM_INSTRUCTION` and `BEDROCK_INITIAL_USER_MESSAGE` defaults (e.g. nurse triage, support desk). Greeting changes require a runtime redeploy via `agentcore deploy`, not App Runner. Do **not** put greeting or persona logic in `answer/` — that handler only generates the presigned URL and NCCO. Queue `LLMRunFrame()` on `on_client_connected` to prevent Nova Sonic 532 timeout.
 
 **Deploy your agent to AgentCore:**
 
@@ -386,7 +408,6 @@ Call your Vonage number. When Vonage sends a `GET /answer` request, App Runner g
 [
   {
     "action": "connect",
-    "from": "VONAGE_NUMBER",
     "endpoint": [
       {
         "type": "websocket",
@@ -397,6 +418,8 @@ Call your Vonage number. When Vonage sends a `GET /answer` request, App Runner g
   }
 ]
 ```
+
+> Local `app/main.py` omits the `from` field. Production `answer/answer.py` includes `"from": VONAGE_NUMBER`.
 
 **The full call flow:**
 
@@ -419,7 +442,7 @@ curl -X POST http://localhost:8000/hangup
 
 ## Nova Sonic Session Limit
 
-AWS Nova Sonic has an ~8 minute connection window per session. The agent monitors session age and emits a `session_renewal_recommended` event before the limit is reached. Key environment variables for tuning:
+AWS Nova Sonic has an ~8 minute connection window per session. Both `app/agent.py` and `runtime/agent.py` monitor session age via `NOVA_SESSION_WARN_SECONDS` / `NOVA_SESSION_LIMIT_SECONDS`. Local dev also emits a `session_renewal_recommended` event on the `/events` WebSocket; production runtime logs a renewal warning to CloudWatch. Key environment variables for tuning:
 
 ```bash
 NOVA_SESSION_LIMIT_SECONDS=470          # hard limit (~8 min window)
@@ -430,22 +453,28 @@ NOVA_SESSION_STOP_ON_LIMIT=false        # set true to auto-stop at limit
 ## Key Dependencies
 
 ```
-# Runtime agent (runtime/requirements.txt)
+# Production runtime (runtime/requirements.txt) — PyPI, Python 3.12
 pipecat-ai[aws-nova-sonic,websocket]>=1.3.0
 bedrock-agentcore>=0.1.0
+structlog>=24.1.0
 uvicorn[standard]>=0.29.0
 
-# Answer handler + App Runner container (answer/requirements.txt)
+# Answer handler + App Runner container (answer/requirements.txt) — Python 3.12
 bedrock-agentcore>=0.1.0
 fastapi>=0.110.0
 uvicorn[standard]>=0.29.0
+
+# Local dev app (app/requirements.txt) — Python 3.13, Vonage pipecat fork
+pipecat-ai[aws,aws-nova-sonic,silero] @ git+https://github.com/Vonage/pipecat.git
 ```
 
-> **Note:** Use `pipecat-ai` from PyPI directly — `VonageFrameSerializer` is included in upstream `pipecat-ai>=1.3.0`. No Vonage fork required.
+> **Production:** Use `pipecat-ai` from PyPI — `VonageFrameSerializer` is included in upstream `pipecat-ai>=1.3.0`. No Vonage fork required for `runtime/`.
 >
-> Both extras are required for the runtime:
+> Both `[aws-nova-sonic]` and `[websocket]` extras are required for the runtime:
 > - `[aws-nova-sonic]` → installs `aws_sdk_bedrock_runtime` (Nova Sonic bidirectional streaming) — **Python 3.12+ only**
 > - `[websocket]` → installs `fastapi` (required by `FastAPIWebsocketTransport`)
+>
+> Omitting either extra installs silently but crashes at runtime. All production Dockerfiles use `python:3.12-slim`.
 
 ## Deploying to Production
 
@@ -472,9 +501,10 @@ Nova Sonic (speech-to-speech)
 | | Local Dev | Production |
 | --- | --- | --- |
 | `/answer` handler | `app/main.py` via ngrok | App Runner (`answer/`) |
-| Agent host | Your local Docker container | AgentCore Runtime (`runtime/`) |
+| Agent host | Local Docker container (`app/`) | AgentCore Runtime (`runtime/`) |
 | WebSocket URI in NCCO | `wss://your-reserved-domain.ngrok.app/ws` | Pre-signed AgentCore WSS URL |
-| AWS credentials | `~/.aws/credentials` via `AWS_PROFILE` | IAM Role attached to App Runner instance |
+| AWS credentials | `AWS_PROFILE` / `.env` | IMDS automatic (AgentCore); IAM role (App Runner) |
+| Greeting / persona | `.env` | `runtime/agent.py` defaults |
 | Infrastructure to manage | None | None — both are fully managed |
 
 **What never changes:** `VonageFrameSerializer`, the Pipecat pipeline, and Nova Sonic — identical in both environments.
@@ -554,7 +584,7 @@ curl "https://{service-id}.{region}.awsapprunner.com/answer"
 | Instance role | `tasks.apprunner.amazonaws.com` | `AmazonBedrockFullAccess` + `BedrockAgentCoreFullAccess` |
 | ECR access role | `build.apprunner.amazonaws.com` | `AWSAppRunnerServicePolicyForECRAccess` |
 
-> **Note on Lambda Function URLs:** The AWS reference implementation for this pattern can use Lambda Function URL for the `/answer` handler. If your AWS account permits `lambda:InvokeFunctionUrl`, Lambda is a simpler alternative — the pre-signed URL generation logic is identical. App Runner is used here because it works across all AWS account configurations, including those with org-level SCPs that restrict Lambda public invocations.
+> **Note on Lambda Function URLs:** The AWS reference implementation for this pattern can use Lambda Function URL for the `/answer` handler. If your AWS account permits `lambda:InvokeFunctionUrl`, Lambda is a simpler alternative — the pre-signed URL generation logic is identical. App Runner is used here because it works across all AWS account configurations, including those with org-level SCPs that restrict `lambda:InvokeFunctionUrl` and `lambda:CreateFunction`. IAM simulation (`simulate-principal-policy`) does not evaluate SCPs.
 
 **Total AWS resources:** 1 AgentCore Runtime + 1 App Runner service + 1 ECR repository.
 
@@ -564,7 +594,7 @@ These were discovered during production deployment. Skipping any of these will b
 
 **1. `await websocket.accept()` is mandatory in AgentCore Runtime**
 
-`BedrockAgentCoreApp` does NOT call `websocket.accept()` before routing to your handler. Without it, AgentCore enforces a write-buffer limit and closes the connection with error 1008 "write buffer limit exceeded." Always add this as the first line of your `@app.websocket` handler.
+`BedrockAgentCoreApp` does NOT call `websocket.accept()` before routing to your handler. Without it, AgentCore enforces a write-buffer limit and closes the connection with error 1008 "write buffer limit exceeded." Always add this as the first line of your `@app.websocket` handler. The same error can also mean imports failed before the pipeline started — verify all packages in `runtime/requirements.txt` install cleanly.
 
 **2. Python 3.12 is required for Nova Sonic**
 
@@ -589,9 +619,10 @@ When deploying to AgentCore Runtime, your agent is the hosted runtime. Do not ca
 - Store secrets (Vonage number, runtime ARN) in App Runner environment variables or AWS Secrets Manager
 - Enable CloudWatch metrics and CloudTrail auditing
 - Set `NOVA_SESSION_WARN_SECONDS` and implement session renewal for calls longer than 8 minutes
-- Configure health checks on `GET /` for App Runner
+- Configure health checks on `GET /` for App Runner (`answer/server.py`)
 - Set Vonage Answer URL to your App Runner domain before go-live
 - Verify the `/answer` endpoint returns valid NCCO via `curl` before testing a real call
+- Keep greeting/persona in `runtime/agent.py` — not in `answer/`
 
 ## Conclusion
 

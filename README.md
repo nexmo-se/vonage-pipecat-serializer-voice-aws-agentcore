@@ -99,27 +99,18 @@ VonageFrameSerializer → Pipecat Pipeline → Nova Sonic → caller
 ## Repository Layout
 
 ```text
-vonage-pipecat-serializer-voice-aws-agentcore/vonage-pipecat-serializer-voice-aws-agentcore/
-├── app/                        ← LOCAL DEV: FastAPI app (main.py, agent.py), port 8000
-│   ├── main.py                 ← /answer + /ws + /hangup endpoints
-│   ├── agent.py                ← VonageFrameSerializer + Pipecat pipeline
-│   └── requirements.txt
-├── runtime/                    ← PRODUCTION: AgentCore Runtime container, port 8080
-│   ├── agent.py                ← BedrockAgentCoreApp + VonageFrameSerializer
-│   └── requirements.txt        ← pipecat-ai[aws-nova-sonic,websocket]>=1.3.0
-├── answer/                     ← PRODUCTION: App Runner /answer handler
-│   ├── answer.py               ← AgentCoreRuntimeClient.generate_presigned_url()
-│   ├── server.py               ← FastAPI wrapper + /health endpoint
-│   ├── requirements.txt
-│   └── Dockerfile              ← python:3.12-slim
-├── blog/                       ← Blog content
-│   ├── blog-post.md            ← Markdown version
-│   └── AI Voice Agents with Vonage, Pipecat & AgentCore.txt ← Google Doc paste source
-├── images/
-│   └── architecture-overview-serializer.png ← Updated architecture diagram
-├── docker-compose.yml          
-├── .env.example                            
-└── README.md                   ← Full deployment guide
+vonage-pipecat-serializer-voice-aws-agentcore/
+├── app/                 # LOCAL DEV — FastAPI (main.py, agent.py), port 8000
+├── runtime/             # PRODUCTION — BedrockAgentCoreApp, port 8080, direct code deploy
+│                        #   no Dockerfile; .bedrock_agentcore.yaml (gitignored)
+├── answer/              # PRODUCTION — App Runner /answer handler, port 3000
+│   ├── answer.py        #   presigned URL + NCCO logic
+│   ├── server.py        #   FastAPI wrapper (GET /, GET /answer)
+│   └── Dockerfile       #   python:3.12-slim
+├── blog/                # Tutorial draft (blog-post.md)
+├── images/              # Architecture diagrams
+├── docker-compose.yml
+└── .env.example
 ```
 
 ## Quick Start — Local Dev
@@ -131,6 +122,7 @@ cd vonage-pipecat-serializer-voice-aws-agentcore
 cp .env.example .env
 # Fill in AWS_PROFILE, BEDROCK_MODEL_ID, BEDROCK_INITIAL_USER_MESSAGE (recommended)
 # VONAGE_APPLICATION_ID / VONAGE_PRIVATE_KEY are optional — not used by the inbound webhook flow
+touch private.key   # docker-compose mounts this file; content not needed for inbound calls
 
 docker compose --profile app up --build app
 ngrok http --domain=your-reserved-domain.ngrok.app 8000
@@ -207,11 +199,12 @@ Key settings:
 - **`fixed_audio_packet_size=640`** — 20 ms frames at 16 kHz (640 bytes)
 - **`VonageFrameSerializer`** — handles all PCM frame conversion between Vonage and Pipecat
 
-| | `app/agent.py` (local) | `runtime/agent.py` (production) |
+| | Local (`app/`) | Production (`runtime/`) |
 | --- | --- | --- |
-| App wrapper | `FastAPI()` | `BedrockAgentCoreApp()` |
+| App wrapper | `FastAPI()` in `main.py` | `BedrockAgentCoreApp()` in `agent.py` |
+| Pipeline | `agent.py` (`VonageSerializerVoiceAgent`) | `agent.py` (`_VoiceAgent`) |
 | Port | 8000 | 8080 (AgentCore requirement) |
-| `/answer` endpoint | Present in `app/main.py` | Removed — App Runner handles it |
+| `/answer` endpoint | `main.py` | Removed — App Runner handles it |
 | AWS credentials | `AWS_PROFILE` / `.env` | IMDS automatic — no static keys |
 | AgentCore bootstrap | Optional local call | Removed — agent **is** AgentCore |
 
@@ -467,7 +460,7 @@ aws lambda create-function-url-config \
 # Set the Function URL as your Vonage Answer URL
 ```
 
-> **Lambda blocker:** `lambda:InvokeFunctionUrl` may be blocked by an org-level SCP. IAM simulation (`simulate-principal-policy`) returns `allowed` but does not evaluate SCPs — the actual HTTP request returns HTTP 403. App Runner is not subject to this restriction.
+> **Lambda blocker:** `lambda:InvokeFunctionUrl` (and `lambda:CreateFunction`) may be blocked by org-level SCPs. IAM simulation (`simulate-principal-policy`) returns `allowed` but does not evaluate SCPs — the actual HTTP request returns HTTP 403. App Runner is not subject to this restriction.
 
 ### Option C — Local `/answer` with ngrok
 
@@ -551,6 +544,7 @@ These were discovered during production deployment. Skipping any of these will b
 - [ ] Set Vonage Answer URL to App Runner `/answer` before go-live
 - [ ] `curl` the `/answer` endpoint and confirm NCCO contains `wss://bedrock-agentcore...` before a real call
 - [ ] Tune `NOVA_SESSION_WARN_SECONDS` / `NOVA_SESSION_LIMIT_SECONDS` for calls longer than 8 minutes
+- [ ] Keep greeting/persona in `runtime/agent.py` — not in `answer/`
 
 ## Further Resources
 
